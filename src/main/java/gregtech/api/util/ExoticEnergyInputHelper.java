@@ -1,5 +1,6 @@
 package gregtech.api.util;
 
+import static gregtech.api.util.GTUtility.uncheckedValidMTEList;
 import static gregtech.api.util.GTUtility.validMTEList;
 
 import java.util.ArrayList;
@@ -8,7 +9,9 @@ import java.util.Collections;
 import java.util.List;
 
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
+import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatch;
+import gregtech.api.metatileentity.implementations.MTEHatchEnergy;
 import tectech.thing.metaTileEntity.hatch.MTEHatchEnergyMulti;
 import tectech.thing.metaTileEntity.hatch.MTEHatchEnergyTunnel;
 
@@ -31,17 +34,29 @@ public class ExoticEnergyInputHelper {
     }
 
     public static boolean drainEnergy(long aEU, Iterable<? extends MTEHatch> hatches) {
-        for (MTEHatch tHatch : hatches) {
-            if (!tHatch.isValid()) continue;
-            long tDrain = Math.min(
-                tHatch.getBaseMetaTileEntity()
-                    .getStoredEU(),
-                aEU);
-            tHatch.getBaseMetaTileEntity()
-                .decreaseStoredEnergyUnits(tDrain, false);
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            var mte = tHatch.getBaseMetaTileEntity();
+            long tDrain = Math.min(mte.getStoredEU(), aEU);
+            mte.decreaseStoredEnergyUnits(tDrain, false);
             aEU -= tDrain;
         }
         return aEU <= 0;
+    }
+
+    public boolean drainEnergyInput(long aEU, Iterable<? extends MTEHatch> hatches) {
+        if (aEU <= 0) return true;
+
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            var mte = tHatch.getBaseMetaTileEntity();
+            long tDrain = Math.min(mte.getStoredEU(),aEU);
+            mte.decreaseStoredEnergyUnits(tDrain, false);
+            // basicly copied from ExoticEnergyInputHelper, makes machine use all hatches for power
+            aEU -= tDrain;
+
+            if (aEU <= 0) return true;
+        }
+
+        return false;
     }
 
     public static boolean isExoticEnergyInput(IMetaTileEntity aHatch) {
@@ -51,48 +66,69 @@ public class ExoticEnergyInputHelper {
         return false;
     }
 
-    public static long getTotalEuMulti(Collection<? extends MTEHatch> hatches) {
+    public static long getTotalEuMulti(Iterable<? extends MTEHatch> hatches) {
         long rEU = 0L;
-        for (MTEHatch tHatch : validMTEList(hatches)) {
-            rEU += tHatch.getBaseMetaTileEntity()
-                .getInputVoltage() * tHatch.maxWorkingAmperesIn();
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            rEU += tHatch.getBaseMetaTileEntity().getInputVoltage() * tHatch.maxWorkingAmperesIn();
         }
         return rEU;
     }
 
-    public static long getMaxInputVoltageMulti(Collection<? extends MTEHatch> hatches) {
+    public static long getMaxInputPower(Iterable<? extends MTEHatch> hatches)
+    {
+        long eut = 0;
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            IGregTechTileEntity baseTile = tHatch.getBaseMetaTileEntity();
+            eut += baseTile.getInputVoltage() * baseTile.getInputAmperage();
+        }
+        return eut;
+    }
+
+    public static long getInputVoltageTier(Iterable<? extends MTEHatch> hatches)
+    {
+        var it = uncheckedValidMTEList(hatches).iterator();
+        if (!it.hasNext())
+        {
+            return 0;
+        }
+        long rTier = it.next().getInputTier();
+        while (it.hasNext())
+        {
+            if (it.next().getInputTier() != rTier) return 0;
+        }
+        return rTier;
+    }
+
+    public static long getMaxInputVoltageMulti(Iterable<? extends MTEHatch> hatches) {
         long rVoltage = 0;
-        for (MTEHatch tHatch : validMTEList(hatches)) {
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
             rVoltage += tHatch.getBaseMetaTileEntity()
                 .getInputVoltage();
         }
         return rVoltage;
     }
 
-    public static long getAverageInputVoltageMulti(Collection<? extends MTEHatch> hatches) {
+    public static long getAverageInputVoltageMulti(Iterable<? extends MTEHatch> hatches) {
         long rVoltage = 0;
-        for (MTEHatch tHatch : validMTEList(hatches)) {
-            rVoltage += tHatch.getBaseMetaTileEntity()
-                .getInputVoltage();
+        long size = 0;
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            rVoltage += tHatch.getBaseMetaTileEntity().getInputVoltage();
+            size++;
         }
-        if (hatches.isEmpty()) {
-            return 0;
-        }
-        return rVoltage / hatches.size();
+        return size == 0 ? 0 : rVoltage / size;
     }
 
-    public static long getMaxInputAmpsMulti(Collection<? extends MTEHatch> hatches) {
+    public static long getMaxInputAmpsMulti(Iterable<? extends MTEHatch> hatches) {
         long rAmp = 0;
-        for (MTEHatch tHatch : validMTEList(hatches)) {
-            rAmp += tHatch.getBaseMetaTileEntity()
-                .getInputAmperage();
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
+            rAmp += tHatch.getBaseMetaTileEntity().getInputAmperage();
         }
         return rAmp;
     }
 
-    public static long getMaxWorkingInputAmpsMulti(Collection<? extends MTEHatch> hatches) {
+    public static long getMaxWorkingInputAmpsMulti(Iterable<? extends MTEHatch> hatches) {
         long rAmp = 0;
-        for (MTEHatch tHatch : validMTEList(hatches)) {
+        for (MTEHatch tHatch : uncheckedValidMTEList(hatches)) {
             rAmp += tHatch.maxWorkingAmperesIn();
         }
         return rAmp;

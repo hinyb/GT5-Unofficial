@@ -2817,6 +2817,11 @@ public class GTUtility {
         return metaTileEntities;
     }
 
+    public static <T extends Collection<?>> T uncheckFilterValidMTEs(T metaTileEntities) {
+        metaTileEntities.removeIf(mte -> mte == null || !((MetaTileEntity) mte).isValid());
+        return metaTileEntities;
+    }
+
     /**
      * @return Supplied collection that removes invalid MTEs from the collection while it is being iterated
      */
@@ -2824,6 +2829,11 @@ public class GTUtility {
         T metaTileEntities) {
         return new ValidMTEList<>(metaTileEntities);
     }
+
+    public static <T> UncheckedValidMTEList<T> uncheckedValidMTEList(Iterable<T> metaTileEntities) {
+        return new UncheckedValidMTEList<>(metaTileEntities);
+    }
+
 
     /**
      * Filters a list of MTEs into a list of a subclass
@@ -4065,6 +4075,10 @@ public class GTUtility {
             return createWithCopy(fluidStack.getFluid(), null, fluidStack.tag);
         }
 
+        public static FluidId createNoCopy(FluidStack fluidStack) {
+            return createNoCopy(fluidStack.getFluid(), null, fluidStack.tag);
+        }
+
         public static FluidId createWithAmount(FluidStack fluidStack) {
             return createWithCopy(fluidStack.getFluid(), fluidStack.amount, fluidStack.tag);
         }
@@ -4087,13 +4101,13 @@ public class GTUtility {
             return new AutoValue_GTUtility_FluidId(fluid, nbt, amount);
         }
 
-        protected abstract Fluid fluid();
+        public abstract Fluid fluid();
 
         @Nullable
-        protected abstract NBTTagCompound nbt();
+        public abstract NBTTagCompound nbt();
 
         @Nullable
-        protected abstract Integer amount();
+        public abstract Integer amount();
 
         @Nonnull
         public FluidStack getFluidStack() {
@@ -4382,5 +4396,31 @@ public class GTUtility {
             amount -= a;
         }
         return result;
+    }
+
+    private final static Map<Class<?>, Set<Class<?>>> interfacesCacheMap = new HashMap<>();
+    public static @NotNull Set<Class<?>> getAllInterfaces(@NotNull Class<?> c)
+    {
+        return interfacesCacheMap.computeIfAbsent(c, clazz -> {
+            Set<Class<?>> interfaces = new HashSet<>();
+            collectInterfaces(clazz, interfaces);
+            return Collections.unmodifiableSet(interfaces);
+        });
+    }
+    private static void collectInterfaces(@NotNull Class<?> c, @NotNull Set<Class<?>> interfaces)
+    {
+        if (c == Object.class) return;
+        for (var inter : c.getInterfaces())
+        {
+            if (interfaces.add(inter))
+            {
+                collectInterfaces(inter, interfaces);
+            }
+        }
+        var s = c.getSuperclass();
+        if (s != null && s != Object.class)
+        {
+            collectInterfaces(s, interfaces);
+        }
     }
 }

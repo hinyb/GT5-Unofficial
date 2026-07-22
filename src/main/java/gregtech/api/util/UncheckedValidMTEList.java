@@ -1,26 +1,21 @@
 package gregtech.api.util;
 
-import java.util.Collection;
-import java.util.Iterator;
-
+import gregtech.api.metatileentity.MetaTileEntity;
 import org.jetbrains.annotations.NotNull;
 
-import gregtech.api.metatileentity.MetaTileEntity;
+import java.util.Iterator;
 
-public class ValidMTEList<E extends Collection<T>, T extends MetaTileEntity> implements Iterable<T> {
-
-    private final E collection;
-
-    public ValidMTEList(E collection) {
+public class UncheckedValidMTEList<T> implements Iterable<T> {
+    private final Iterable<T> collection;
+    public UncheckedValidMTEList(Iterable<T> collection) {
         this.collection = collection;
     }
-
     @Override
     public @NotNull Iterator<T> iterator() {
         return new SelfCleaningIterator<>(collection.iterator()) {
             @Override
             protected boolean isValid(T object) {
-                return object.isValid();
+                return ((MetaTileEntity) object).isValid();
             }
         };
     }

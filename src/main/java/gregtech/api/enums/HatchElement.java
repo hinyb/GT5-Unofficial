@@ -116,16 +116,14 @@ public enum HatchElement implements IHatchElement<MTEMultiBlockBase> {
 
         @Override
         public long count(MTEMultiBlockBase t) {
-            return t.getExoticEnergyHatches()
-                .size();
+            return t.getExoticEnergyHatches().size();
         }
     },
     MultiAmpEnergy("GT5U.MBTT.MultiampEnergyHatch", MTEMultiBlockBase::addMultiAmpEnergyInputToMachineList) {
 
         @Override
         public long count(MTEMultiBlockBase t) {
-            return t.getExoticEnergyHatches()
-                .size();
+            return t.getExoticEnergyHatches().size();
         }
     },
     ExoticDynamo("GT5U.MBTT.ExoticEnergyDynamo", MTEMultiBlockBase::addExoticDynamoToMachineList) {
