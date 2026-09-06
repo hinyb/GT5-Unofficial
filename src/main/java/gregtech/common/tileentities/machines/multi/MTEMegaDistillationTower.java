@@ -440,19 +440,21 @@ public class MTEMegaDistillationTower extends MTEExtendedPowerMultiBlockBase<MTE
         boolean succeed = true;
 
         for (FluidStack stack : outputFluids) {
-            if (!mergedFluids.isEmpty() && !(stack.isFluidEqual(mergedFluids.getFirst())
+            if (mergedFluids.isEmpty() || (stack.isFluidEqual(mergedFluids.getFirst())
                 && mergedFluids.getLast().amount == Integer.MAX_VALUE)) {
-                if (index >= outputHatchesPerLayer.size()) {
-                    succeed = false;
-                    break;
-                }
-                if (!addFluidOutputs(mergedFluids.toArray(new FluidStack[0]), outputHatchesPerLayer.get(index))) {
-                    succeed = false;
-                }
-                mergedFluids.clear();
-                index++;
+                mergedFluids.add(stack);
+                continue;
             }
+            if (index >= outputHatchesPerLayer.size()) {
+                succeed = false;
+                break;
+            }
+            if (!addFluidOutputs(mergedFluids.toArray(new FluidStack[0]), outputHatchesPerLayer.get(index))) {
+                succeed = false;
+            }
+            mergedFluids.clear();
             mergedFluids.add(stack);
+            index++;
         }
         if (!mergedFluids.isEmpty()) {
             if (index >= outputHatchesPerLayer.size()) {
