@@ -100,6 +100,7 @@ import gregtech.api.interfaces.IOutputBus;
 import gregtech.api.interfaces.IOutputHatch;
 import gregtech.api.interfaces.ITexture;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
+import gregtech.api.interfaces.metatileentity.IMultiblockController;
 import gregtech.api.interfaces.modularui.IAddGregtechLogo;
 import gregtech.api.interfaces.modularui.IAddUIWidgets;
 import gregtech.api.interfaces.modularui.IBindPlayerInventoryUI;
@@ -174,8 +175,8 @@ import tectech.thing.metaTileEntity.hatch.MTEHatchDynamoMulti;
 import tectech.thing.metaTileEntity.hatch.MTEHatchDynamoTunnel;
 import tectech.thing.metaTileEntity.hatch.MTEHatchEnergyMulti;
 
-public abstract class MTEMultiBlockBase extends MetaTileEntity
-    implements IControllerWithOptionalFeatures, IAddGregtechLogo, IAddUIWidgets, IBindPlayerInventoryUI, IHatchWatcher {
+public abstract class MTEMultiBlockBase extends MetaTileEntity implements IControllerWithOptionalFeatures,
+    IAddGregtechLogo, IAddUIWidgets, IBindPlayerInventoryUI, IHatchWatcher, IMultiblockController {
 
     public static boolean disableMaintenance;
     public boolean hasMaintenanceChecks = getDefaultHasMaintenanceChecks();
@@ -270,8 +271,8 @@ public abstract class MTEMultiBlockBase extends MetaTileEntity
      */
     private final List<StructureError> structureErrors = new ArrayList<>();
 
-    protected static final byte INTERRUPT_SOUND_INDEX = 8;
-    protected static final byte PROCESS_START_SOUND_INDEX = 1;
+    public static final byte INTERRUPT_SOUND_INDEX = 8;
+    public static final byte PROCESS_START_SOUND_INDEX = 1;
 
     public MTEMultiBlockBase(int aID, String aName, String aNameRegional) {
         super(aID, aName, aNameRegional, 2);
@@ -320,6 +321,11 @@ public abstract class MTEMultiBlockBase extends MetaTileEntity
     @Override
     public boolean isFacingValid(ForgeDirection facing) {
         return true;
+    }
+
+    @Override
+    public String getLocalName() {
+        return super.getLocalName();
     }
 
     @Override
