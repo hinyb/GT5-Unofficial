@@ -1,5 +1,8 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.PROCESSING_LOGIC_SETUP;
 import static gregtech.api.metatileentity.BaseTileEntity.TOOLTIP_DELAY;
 
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -21,18 +24,17 @@ import com.cleanroommc.modularui.widgets.ButtonWidget;
 import com.cleanroommc.modularui.widgets.layout.Flow;
 import com.cleanroommc.modularui.widgets.textfield.TextFieldWidget;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IParallelLogicComponent;
-import gregtech.api.ec.component.multiblock.IProcessingLogicSetupComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
 import gregtech.api.logic.ProcessingLogic;
 import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
-public class ParallelLogicComponent extends BaseMultiblockComponent implements IParallelLogicComponent,
-    IProcessingLogicSetupComponent, ISavableComponent, IWailaDataComponent, IGuiProviderComponent {
+public class ParallelLogicComponent extends BaseMultiblockComponent
+    implements IParallelLogicComponent, ISavableComponent {
 
     private boolean alwaysMaxParallel = true;
     private int powerPanelMaxParallel = 1;
@@ -42,7 +44,6 @@ public class ParallelLogicComponent extends BaseMultiblockComponent implements I
         this.maxParallelProvider = maxParallelProvider;
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         final int localMaxParallel = getMaxParallelRecipes();
@@ -54,20 +55,26 @@ public class ParallelLogicComponent extends BaseMultiblockComponent implements I
         }
     }
 
-    @Override
     public void setupProcessingLogic(ProcessingLogic logic) {
         logic.setMaxParallelSupplier(this::getTrueParallel);
     }
 
     @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(PROCESSING_LOGIC_SETUP, this::setupProcessingLogic);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(GUI_PROVIDER, this::configureGui);
+    }
+
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.powerPanel()
             .add(
-                PowerPanelSection.PARALLEL_LABEL,
+                IGuiProvider.PowerPanelSection.PARALLEL_LABEL,
                 (panel, syncManager) -> IKey.lang("GTPP.CC.parallel")
                     .asWidget()
                     .marginBottom(4))
-            .add(PowerPanelSection.PARALLEL_CONFIGURE, (panel, syncManager) -> {
+            .add(IGuiProvider.PowerPanelSection.PARALLEL_CONFIGURE, (panel, syncManager) -> {
                 IntSyncValue maxParallelSyncer = new IntSyncValue(
                     this::getMaxParallelForPanel,
                     this::setMaxParallelForPanel,

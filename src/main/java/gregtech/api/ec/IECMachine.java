@@ -13,6 +13,21 @@ import org.jetbrains.annotations.Nullable;
 import gregtech.api.ec.component.IFluidInputLogicComponent;
 import gregtech.api.ec.component.IItemInputLogicComponent;
 import gregtech.api.ec.component.IUniqueComponent;
+import gregtech.api.ec.signal.IOnActiveStateChange;
+import gregtech.api.ec.signal.IOnClientPostTick;
+import gregtech.api.ec.signal.IOnDoSound;
+import gregtech.api.ec.signal.IOnFirstTick;
+import gregtech.api.ec.signal.IOnMachineRemoval;
+import gregtech.api.ec.signal.IOnMachineUnload;
+import gregtech.api.ec.signal.IOnServerPostTick;
+import gregtech.api.ec.signal.IOnServerTickFail;
+import gregtech.api.ec.signal.IOnStartSoundLoop;
+import gregtech.api.ec.signal.IOnToolClick;
+import gregtech.api.ec.signal.IOnWorkStateChange;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
+import gregtech.api.ec.signal.IScannerInfoMapProvider;
+import gregtech.api.ec.signal.IWailaBodyProvider;
+import gregtech.api.ec.signal.IWailaDataProvider;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.util.GTUtility;
 
@@ -42,6 +57,12 @@ public interface IECMachine {
     }
 
     <T extends IComponent> boolean removeComponent(@NotNull ComponentKey.ListKey<T> key);
+
+    <T> @NotNull Signal<T> signal(@NotNull SignalKey<T> key);
+
+    <T> @NotNull T[] listeners(@NotNull SignalKey<T> key);
+
+    boolean hasListeners(@NotNull SignalKey<?> key);
 
     void markDirty();
 
@@ -225,4 +246,26 @@ public interface IECMachine {
         boolean simulate) {
         return depleteItemRange(filter, 1, maxAmount, simulate);
     }
+
+    SignalKey<IOnServerPostTick> ON_SERVER_POST_TICK = SignalKey.create();
+    SignalKey<IOnClientPostTick> ON_CLIENT_POST_TICK = SignalKey.create();
+    /**
+     * Note: only trigger on server side.
+     */
+    SignalKey<IOnActiveStateChange> ON_ACTIVE_STATE_CHANGE = SignalKey.create();
+    SignalKey<IOnFirstTick> ON_FIRST_TICK = SignalKey.create();
+    SignalKey<IOnServerTickFail> ON_SERVER_TICK_FAIL = SignalKey.create();
+    SignalKey<IOnMachineRemoval> ON_MACHINE_REMOVAL = SignalKey.create();
+    SignalKey<IOnMachineUnload> ON_MACHINE_UNLOAD = SignalKey.create();
+    SignalKey<IOnDoSound> ON_DO_SOUND = SignalKey.create();
+    SignalKey<IOnStartSoundLoop> ON_START_SOUND_LOOP = SignalKey.create();
+    SignalKey<IOnWorkStateChange> ON_WORK_STATE_CHANGE = SignalKey.create();
+    SignalKey<IOnToolClick> ON_WRENCH_CLICK = SignalKey.create();
+    SignalKey<IOnToolClick> ON_SCREWDRIVER_CLICK = SignalKey.create();
+    SignalKey<IOnToolClick> ON_WIRE_CUTTER_CLICK = SignalKey.create();
+    SignalKey<IOnToolClick> ON_SOLDERING_TOOL_CLICK = SignalKey.create();
+    SignalKey<IScannerInfoDataProvider> SCANNER_INFO_DATA_PROVIDER = SignalKey.create();
+    SignalKey<IScannerInfoMapProvider> SCANNER_INFO_MAP_PROVIDER = SignalKey.create();
+    SignalKey<IWailaDataProvider> WAILA_DATA_PROVIDER = SignalKey.create();
+    SignalKey<IWailaBodyProvider> WAILA_BODY_PROVIDER = SignalKey.create();
 }

@@ -1,6 +1,14 @@
 package gregtech.common.ec.multiblock.internal;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.ON_SERVER_POST_TICK;
+import static gregtech.api.ec.IECMachine.ON_SERVER_TICK_FAIL;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.IECMultiblock.ON_MACHINE_STOP;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.ON_STRUCTURE_FORMED;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,30 +35,17 @@ import com.cleanroommc.modularui.value.sync.LongSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.gtnewhorizons.modularui.common.internal.network.NetworkUtils;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnMachineStopComponent;
-import gregtech.api.ec.component.IOnRecipeFinishComponent;
-import gregtech.api.ec.component.IOnRecipeIdleComponent;
-import gregtech.api.ec.component.IOnRecipeStartComponent;
-import gregtech.api.ec.component.IOnRecipeTickComponent;
-import gregtech.api.ec.component.IOnServerPostTickComponent;
-import gregtech.api.ec.component.IOnServerTickFailComponent;
-import gregtech.api.ec.component.IPostRunMachineComponent;
-import gregtech.api.ec.component.IPreRunMachineComponent;
+import gregtech.api.ec.Signal;
 import gregtech.api.ec.component.IProgressIncrementComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IRecipePollingComponent;
-import gregtech.api.ec.component.IRecipeProcessAwareComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.ISlotUpdateAwareComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.multiblock.IMaintenanceLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockFluidOutputLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockItemOutputLogicComponent;
-import gregtech.api.ec.component.multiblock.IOnStructureStateChangeComponent;
 import gregtech.api.ec.component.multiblock.IVoidingConfigComponent;
+import gregtech.api.ec.signal.IOnServerPostTick;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
@@ -61,9 +56,8 @@ import gregtech.common.gui.modularui.adapter.CheckRecipeResultAdapter;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 import mcp.mobius.waila.overlay.tooltiprenderers.TTRenderStack;
 
-public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent implements IRecipeLogicComponent,
-    ISavableComponent, IOnServerPostTickComponent, IOnStructureStateChangeComponent, IOnServerTickFailComponent,
-    IOnMachineStopComponent, IScannerInfoComponent, IWailaDataComponent, IGuiSyncableComponent {
+public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent
+    implements IRecipeLogicComponent, ISavableComponent {
 
     protected boolean mRunningOnLoad = false;
     protected int mProgresstime = 0, mMaxProgresstime = 0, mRuntime = 0, lastParallel = 1;
@@ -92,17 +86,14 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
     public List<ItemStack> mPendingItems = new ArrayList<>();
     public List<FluidStack> mPendingFluids = new ArrayList<>();
 
-    @Override
     public void onStructureFormed(@NotNull IGregTechTileEntity igte) {
         scheduleRecipeCheck(RecipeCheckReason.IMMEDIATE);
     }
 
-    @Override
     public void onServerTickFail(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         checkRecipeResult = CheckRecipeResultRegistry.CRASH;
     }
 
-    @Override
     public void onMachineStop(@NotNull ShutDownReason reason) {
         mLastWorkingTick = getTotalRunTime();
         mOutputItems = null;
@@ -113,32 +104,29 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
         lastParallel = 1;
     }
 
-    @Override
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
-        builder.addIf(mProgresstime > 0, Section.PROGRESS, data -> {
-            data.add(
-                StatCollector.translateToLocalFormatted(
-                    "GT5U.multiblock.scanner.Progress",
-                    formatNumber(mProgresstime / 20),
-                    formatNumber(mMaxProgresstime / 20)));
-        })
+        builder
+            .addIf(
+                mProgresstime > 0,
+                IScannerInfoDataProvider.Section.PROGRESS,
+                data -> data.add(
+                    StatCollector.translateToLocalFormatted(
+                        "GT5U.multiblock.scanner.Progress",
+                        formatNumber(mProgresstime / 20),
+                        formatNumber(mMaxProgresstime / 20))))
             .addIf(
                 recipesDone > 0,
-                Section.RECIPES_DONE,
-                data -> {
-                    data.add(
-                        StatCollector
-                            .translateToLocalFormatted("GT5U.multiblock.recipesDone.fmt", formatNumber(recipesDone)));
-                });
+                IScannerInfoDataProvider.Section.RECIPES_DONE,
+                data -> data.add(
+                    StatCollector
+                        .translateToLocalFormatted("GT5U.multiblock.recipesDone.fmt", formatNumber(recipesDone))));
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         map.put("progressTime", Integer.toString(mProgresstime));
         map.put("maxProgressTime", Integer.toString(mMaxProgresstime));
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         tag.setInteger("progress", mProgresstime);
@@ -178,7 +166,6 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
         }
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         syncManager
             .syncValue("lastWorkingTick", new LongSyncValue(() -> mLastWorkingTick, (val) -> mLastWorkingTick = val));
@@ -399,15 +386,15 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
     }
 
     public void startRecipeProcessing() {
-        for (IRecipeProcessAwareComponent component : recipeProcessAwares) {
-            component.startRecipeProcessing();
+        for (var listener : startRecipeProcessAwares.listeners()) {
+            listener.startRecipeProcessing();
         }
     }
 
     public void endRecipeProcessing() {
         CheckRecipeResult worstResult = CheckRecipeResultRegistry.SUCCESSFUL;
-        for (IRecipeProcessAwareComponent component : recipeProcessAwares) {
-            var result = component.endRecipeProcessing();
+        for (var listener : endRecipeProcessAwares.listeners()) {
+            var result = listener.endRecipeProcessing();
             if (!result.wasSuccessful()) {
                 worstResult = result;
             }
@@ -422,8 +409,8 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
     }
 
     public void updateSlots() {
-        for (ISlotUpdateAwareComponent component : slotUpdateAwares) {
-            component.updateSlots();
+        for (var listener : slotUpdateAwares.listeners()) {
+            listener.updateSlots();
         }
         ItemStack controllerStack = getControllerSlot();
         if (controllerStack != null && controllerStack.stackSize <= 0) {
@@ -463,8 +450,8 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
         if (success) {
             recipeCheckCooldownUntil = 0;
             lastParallel = getCurrentParallels();
-            for (var component : onRecipeStarts) {
-                component.onRecipeStart(this);
+            for (var listener : onRecipeStarts.listeners()) {
+                listener.onRecipeStart(this);
             }
         } else {
             int cooldown = MachineStats.machines.recipeCheckFailCooldown;
@@ -493,8 +480,8 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
             return true;
         }
         long timeElapsed = getTotalRunTime() - mLastWorkingTick;
-        for (var component : recipePollings) {
-            if (component.shouldPollRecipe(getTotalRunTime(), timeElapsed)) {
+        for (var listener : recipePollings.listeners()) {
+            if (listener.shouldPollRecipe(getTotalRunTime(), timeElapsed)) {
                 return true;
             }
         }
@@ -504,14 +491,14 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
     protected void runMachineInternal(@NotNull IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         if (mMaxProgresstime > 0) {
             if (++mRuntime > 1000) mRuntime = 1;
-            for (var component : onRecipeTicks) {
-                if (!component.onRecipeTick(this)) return;
+            for (var listener : onRecipeTicks.listeners()) {
+                if (!listener.onRecipeTick(this)) return;
             }
             markDirty();
             incrementProgressTime();
             if (mMaxProgresstime > 0 && mProgresstime >= mMaxProgresstime) {
-                for (var component : onRecipeFinishes) {
-                    component.onRecipeFinish(this);
+                for (var listener : onRecipeFinishes.listeners()) {
+                    listener.onRecipeFinish(this);
                 }
                 if (mOutputItems != null) addPendingOutputs(mOutputItems);
                 if (mOutputFluids != null) addPendingOutputs(mOutputFluids);
@@ -541,8 +528,8 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
                 }
             }
             if (mMaxProgresstime <= 0) {
-                for (var component : onRecipeIdles) {
-                    component.onRecipeIdle(this);
+                for (var listener : onRecipeIdles.listeners()) {
+                    listener.onRecipeIdle(this);
                 }
             }
         }
@@ -550,28 +537,22 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
 
     protected void runMachine(@NotNull IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         if (!tryFlushPendingOutputs()) return;
-        for (var component : preRunMachines) {
-            if (!component.onPreRunMachine(this, aBaseMetaTileEntity, aTick)) {
+        for (var listener : preRunMachines.listeners()) {
+            if (!listener.onPreRunMachine(this, aBaseMetaTileEntity, aTick)) {
                 return;
             }
         }
         runMachineInternal(aBaseMetaTileEntity, aTick);
-        for (var component : postRunMachines) {
-            component.onPostRunMachine(this, aBaseMetaTileEntity, aTick);
+        for (var listener : postRunMachines.listeners()) {
+            listener.onPostRunMachine(this, aBaseMetaTileEntity, aTick);
         }
     }
 
-    @Override
     public void onServerPostTick(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
-        if (isMachineFormed() && (maintenanceLogic == null || maintenanceLogic.getRepairStatus() > 0)) {
+        if (isMachineFormed()) {
             runMachine(aBaseMetaTileEntity, aTick);
         }
         aBaseMetaTileEntity.setActive(mMaxProgresstime > 0);
-    }
-
-    @Override
-    public int getServerTickPriority() {
-        return ServerTickPriority.RECIPE.priority;
     }
 
     @Override
@@ -686,33 +667,46 @@ public abstract class BaseRecipeLogicComponent extends BaseMultiblockComponent i
     private @Nullable IVoidingConfigComponent voidingConfig;
     private @Nullable IMultiblockItemOutputLogicComponent itemOutputLogic;
     private @Nullable IMultiblockFluidOutputLogicComponent fluidOutputLogic;
-    private @Nullable IMaintenanceLogicComponent maintenanceLogic;
     private @Nullable IProgressIncrementComponent progressIncrement;
-    private IRecipeProcessAwareComponent[] recipeProcessAwares;
-    private ISlotUpdateAwareComponent[] slotUpdateAwares;
-    private IOnRecipeStartComponent[] onRecipeStarts;
-    private IOnRecipeTickComponent[] onRecipeTicks;
-    private IOnRecipeFinishComponent[] onRecipeFinishes;
-    private IOnRecipeIdleComponent[] onRecipeIdles;
-    private IRecipePollingComponent[] recipePollings;
-    private IPreRunMachineComponent[] preRunMachines;
-    private IPostRunMachineComponent[] postRunMachines;
+    private Signal<IStartRecipeProcessing> startRecipeProcessAwares;
+    private Signal<IEndRecipeProcessing> endRecipeProcessAwares;
+    private Signal<IOnSlotUpdate> slotUpdateAwares;
+    private Signal<IOnRecipeStart> onRecipeStarts;
+    private Signal<IOnRecipeTick> onRecipeTicks;
+    private Signal<IOnRecipeFinish> onRecipeFinishes;
+    private Signal<IOnRecipeIdle> onRecipeIdles;
+    private Signal<IRecipePolling> recipePollings;
+    private Signal<IPreRunMachine> preRunMachines;
+    private Signal<IPostRunMachine> postRunMachines;
 
     @Override
     public void onComponentsReady() {
         voidingConfig = tryGetComponent(IVoidingConfigComponent.KEY);
         itemOutputLogic = tryGetComponent(IMultiblockItemOutputLogicComponent.KEY);
         fluidOutputLogic = tryGetComponent(IMultiblockFluidOutputLogicComponent.KEY);
-        maintenanceLogic = tryGetComponent(IMaintenanceLogicComponent.KEY);
         progressIncrement = tryGetComponent(IProgressIncrementComponent.KEY);
-        recipeProcessAwares = getComponents(IRecipeProcessAwareComponent.KEY);
-        slotUpdateAwares = getComponents(ISlotUpdateAwareComponent.KEY);
-        onRecipeStarts = getComponents(IOnRecipeStartComponent.KEY);
-        onRecipeTicks = getComponents(IOnRecipeTickComponent.KEY);
-        onRecipeFinishes = getComponents(IOnRecipeFinishComponent.KEY);
-        onRecipeIdles = getComponents(IOnRecipeIdleComponent.KEY);
-        recipePollings = getComponents(IRecipePollingComponent.KEY);
-        preRunMachines = getComponents(IPreRunMachineComponent.KEY);
-        postRunMachines = getComponents(IPostRunMachineComponent.KEY);
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SERVER_POST_TICK, IOnServerPostTick.RECIPE, this::onServerPostTick);
+        connect(ON_SERVER_TICK_FAIL, this::onServerTickFail);
+        connect(ON_MACHINE_STOP, this::onMachineStop);
+        connect(ON_STRUCTURE_FORMED, this::onStructureFormed);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
+        onRecipeStarts = signal(ON_RECIPE_START);
+        onRecipeTicks = signal(ON_RECIPE_TICK);
+        onRecipeFinishes = signal(ON_RECIPE_FINISH);
+        onRecipeIdles = signal(ON_RECIPE_IDLE);
+        recipePollings = signal(RECIPE_POLLING);
+        preRunMachines = signal(PRE_RUN_MACHINE);
+        postRunMachines = signal(POST_RUN_MACHINE);
+        slotUpdateAwares = signal(ON_SLOT_UPDATE);
+        startRecipeProcessAwares = signal(START_RECIPE_PROCESSING);
+        endRecipeProcessAwares = signal(END_RECIPE_PROCESSING);
     }
 }

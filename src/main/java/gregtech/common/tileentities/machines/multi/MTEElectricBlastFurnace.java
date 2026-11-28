@@ -42,9 +42,9 @@ import gregtech.GTMod;
 import gregtech.api.GregTechAPI;
 import gregtech.api.casing.Casings;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IWailaBodyProviderComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockEnergyInputLogicComponent;
 import gregtech.api.ec.implementations.MultiblockComponentBuilder;
+import gregtech.api.ec.signal.IWailaBodyProvider;
 import gregtech.api.enums.HeatingCoilLevel;
 import gregtech.api.enums.SoundResource;
 import gregtech.api.enums.Textures;
@@ -125,6 +125,8 @@ public class MTEElectricBlastFurnace extends MTEAbstractMultiFurnace<MTEElectric
             .setActivitySound(SoundResource.GT_MACHINES_EBF_LOOP)
             .enableStandardQoL()
             .enableRecipeLocking();
+        connect(WAILA_DATA_PROVIDER, this::getExtraWailaNBT);
+        connect(WAILA_BODY_PROVIDER, this::appendWailaBody);
     }
 
     @Override
@@ -246,16 +248,13 @@ public class MTEElectricBlastFurnace extends MTEAbstractMultiFurnace<MTEElectric
         return survivalBuildPiece(STRUCTURE_PIECE_MAIN, stackSize, 1, 3, 0, elementBudget, env, false, true);
     }
 
-    @Override
-    public void getExtraWailaNBT(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x, int y,
-        int z) {
+    protected void getExtraWailaNBT(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
+        int y, int z) {
         tag.setInteger("heatingCapacity", mHeatingCapacity);
     }
 
-    @Override
-    protected void appendWailaBody(
-        @NotNull OrderedSectionBuilder<IWailaBodyProviderComponent.WailaBodyProvider> builder) {
-        builder.add("ebf.heat", IWailaBodyProviderComponent.Section.CUSTOM, (ctx, tip) -> {
+    protected void appendWailaBody(@NotNull OrderedSectionBuilder<IWailaBodyProvider.WailaBodyProvider> builder) {
+        builder.add("ebf.heat", IWailaBodyProvider.Section.CUSTOM, (ctx, tip) -> {
             var tag = ctx.tag();
             tip.add(
                 StatCollector.translateToLocalFormatted(

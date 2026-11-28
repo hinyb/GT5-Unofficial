@@ -1,5 +1,9 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.ON_SCREWDRIVER_CLICK;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -11,21 +15,21 @@ import org.jetbrains.annotations.Nullable;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnScrewdriverClickComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IInputSeparationComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IOnToolClick;
 import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockECBaseGui;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 
-public class InputSeparationComponent extends BaseMultiblockComponent implements IInputSeparationComponent,
-    ISavableComponent, IOnScrewdriverClickComponent, IGuiSyncableComponent, IGuiProviderComponent {
+public class InputSeparationComponent extends BaseMultiblockComponent
+    implements IInputSeparationComponent, ISavableComponent {
 
     protected static final String INPUT_SEPARATION_NBT_KEY = "inputSeparation";
     private boolean inputSeparation = true;
@@ -74,9 +78,8 @@ public class InputSeparationComponent extends BaseMultiblockComponent implements
         inputSeparation = nbt.getBoolean(INPUT_SEPARATION_NBT_KEY);
     }
 
-    @Override
-    public boolean onScrewdriverRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY, float aZ,
-        ItemStack aTool) {
+    public boolean onScrewdriverRightClick(ForgeDirection side, ForgeDirection wrenchingSide, EntityPlayer aPlayer,
+        float aX, float aY, float aZ, ItemStack aTool) {
         if (!allowScrewdriverToggle) return false;
         setInputSeparation(!isInputSeparationEnabled());
         GTUtility.sendChatTrans(
@@ -86,11 +89,13 @@ public class InputSeparationComponent extends BaseMultiblockComponent implements
     }
 
     @Override
-    public int getOnScrewdriverClickPriority() {
-        return OnScrewdriverClickPriority.INPUT_SEPARATION.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SCREWDRIVER_CLICK, IOnToolClick.ScrewdriverPriority.INPUT_SEPARATION, this::onScrewdriverRightClick);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         BooleanSyncValue inputSeparationSyncer = new BooleanSyncValue(
             this::isInputSeparationEnabled,
@@ -98,11 +103,10 @@ public class InputSeparationComponent extends BaseMultiblockComponent implements
         syncManager.syncValue("inputSeparation", inputSeparationSyncer);
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.leftGap()
             .replace(
-                LeftGapSection.INPUT_SEPARATION,
+                IGuiProvider.LeftGapSection.INPUT_SEPARATION,
                 (panel, syncManager) -> MTEMultiBlockECBaseGui.createActiveFeatureToggleButton(
                     syncManager.findSyncHandler("inputSeparation", BooleanSyncValue.class),
                     GTGuiTextures.OVERLAY_BUTTON_INPUT_SEPARATION_OFF,

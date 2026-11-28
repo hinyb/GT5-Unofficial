@@ -1,8 +1,17 @@
 package gregtech.api.ec.implementations;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.world.World;
 import net.minecraftforge.common.util.ForgeDirection;
 
 import org.jetbrains.annotations.NotNull;
@@ -10,27 +19,23 @@ import org.jetbrains.annotations.Nullable;
 
 import gregtech.api.ec.ComponentContainer;
 import gregtech.api.ec.ComponentKey;
+import gregtech.api.ec.Connection;
 import gregtech.api.ec.IComponent;
 import gregtech.api.ec.IECMachine;
+import gregtech.api.ec.OrderedSectionBuilder;
+import gregtech.api.ec.Signal;
+import gregtech.api.ec.SignalKey;
 import gregtech.api.ec.component.IActivitySoundLoopComponent;
-import gregtech.api.ec.component.IClientSoundComponent;
-import gregtech.api.ec.component.IOnActiveStateChangeComponent;
-import gregtech.api.ec.component.IOnClientPostTickComponent;
-import gregtech.api.ec.component.IOnFirstTickComponent;
-import gregtech.api.ec.component.IOnMachineRemovalComponent;
-import gregtech.api.ec.component.IOnMachineUnloadComponent;
-import gregtech.api.ec.component.IOnScrewdriverClickComponent;
-import gregtech.api.ec.component.IOnServerPostTickComponent;
-import gregtech.api.ec.component.IOnServerTickFailComponent;
-import gregtech.api.ec.component.IOnSolderingToolClickComponent;
-import gregtech.api.ec.component.IOnWireCutterClickComponent;
-import gregtech.api.ec.component.IOnWorkStateChangeComponent;
-import gregtech.api.ec.component.IOnWrenchClickComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
+import gregtech.api.ec.signal.IOnClientPostTick;
+import gregtech.api.ec.signal.IOnServerPostTick;
+import gregtech.api.ec.signal.IWailaBodyProvider;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
+import mcp.mobius.waila.api.IWailaConfigHandler;
+import mcp.mobius.waila.api.IWailaDataAccessor;
 
 public abstract class MetaTileEntityECBase extends MetaTileEntity implements IECMachine {
 
@@ -48,26 +53,15 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
         if (!container.isInitialized()) initComponents();
     }
 
+    protected @Nullable Signal<IOnServerPostTick> serverPostTicks;
+    protected @Nullable Signal<IOnClientPostTick> clientPostTicks;
+
     protected void initComponents() {
-        container.initialize(this::registerComponents);
-    }
-
-    protected abstract void registerComponents();
-
-    private boolean needsClientTick = false;
-
-    protected IOnServerPostTickComponent[] serverPostTicks = IOnServerPostTickComponent.KEY.emptyArray;
-    protected IOnClientPostTickComponent[] clientPostTicks = IOnClientPostTickComponent.KEY.emptyArray;
-    protected IOnActiveStateChangeComponent[] activeStateChanges = IOnActiveStateChangeComponent.KEY.emptyArray;
-
-    protected void onComponentsReady() {
-        serverPostTicks = getComponents(IOnServerPostTickComponent.KEY);
-        clientPostTicks = getComponents(IOnClientPostTickComponent.KEY);
-        activeStateChanges = getComponents(IOnActiveStateChangeComponent.KEY);
-        if (container.isReady()) {
-            boolean shouldClientTick = clientPostTicks.length > 0;
-            if (needsClientTick != shouldClientTick) {
-                needsClientTick = shouldClientTick;
+        serverPostTicks = container.signal(ON_SERVER_POST_TICK);
+        clientPostTicks = container.signal(ON_CLIENT_POST_TICK);
+        clientPostTicks.watchActive(this, 0, (_, active) -> {
+            needsClientTick = active;
+            if (container.isReady()) {
                 var igte = getBaseMetaTileEntity();
                 if (igte != null && igte.isClientSide()) {
                     // update cached mNeedsClientTick
@@ -77,112 +71,121 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
                     }
                 }
             }
-        }
+        });
+        container.initialize(this::registerComponents);
     }
+
+    protected abstract void registerComponents();
+
+    private boolean needsClientTick = false;
+
+    protected void onComponentsReady() {}
 
     @Override
     public final IMetaTileEntity newMetaEntity(IGregTechTileEntity aTileEntity) {
         var instance = createNewMetaEntity(aTileEntity);
-        instance.initComponents();
+        instance.ensureComponentsInitialized();
         return instance;
     }
 
     protected abstract @NotNull MetaTileEntityECBase createNewMetaEntity(IGregTechTileEntity aTileEntity);
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <C extends IComponent> @Nullable C tryGetComponent(@NotNull ComponentKey.UniqueKey<C> key) {
+    public final <C extends IComponent> @Nullable C tryGetComponent(@NotNull ComponentKey.UniqueKey<C> key) {
         ensureComponentsInitialized();
         return container.tryGetComponent(key);
     }
 
     @Override
-    public <C extends IComponent> boolean hasComponent(@NotNull ComponentKey<C> key) {
+    public final <C extends IComponent> boolean hasComponent(@NotNull ComponentKey<C> key) {
         ensureComponentsInitialized();
         return container.hasComponent(key);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <C extends IComponent> @NotNull C[] getComponents(@NotNull ComponentKey.ListKey<C> key) {
+    public final <C extends IComponent> @NotNull C[] getComponents(@NotNull ComponentKey.ListKey<C> key) {
         ensureComponentsInitialized();
         return container.getComponents(key);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <C extends IComponent> IECMachine addComponent(@NotNull C component) {
+    public final <C extends IComponent> IECMachine addComponent(@NotNull C component) {
         ensureComponentsInitialized();
         container.addComponent(component);
         return this;
     }
 
     @Override
-    public <C extends IComponent> boolean removeComponent(@NotNull C component) {
+    public final <C extends IComponent> boolean removeComponent(@NotNull C component) {
         if (!container.isInitialized()) return false;
         return container.removeComponent(component);
     }
 
-    @SuppressWarnings("unchecked")
     @Override
-    public <C extends IComponent> boolean removeComponent(@NotNull ComponentKey.ListKey<C> key) {
+    public final <C extends IComponent> boolean removeComponent(@NotNull ComponentKey.ListKey<C> key) {
         if (!container.isInitialized()) return false;
         return container.removeComponent(key);
     }
 
     @Override
-    public final boolean onWrenchRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
-        EntityPlayer entityPlayer, float aX, float aY, float aZ, ItemStack aTool) {
-        for (var comp : getComponents(IOnWrenchClickComponent.KEY)) {
-            if (comp.onWrenchRightClick(side, wrenchingSide, entityPlayer, aX, aY, aZ, aTool)) return true;
-        }
-        return onUnhandledWrenchRightClick(side, wrenchingSide, entityPlayer, aX, aY, aZ, aTool);
+    public final <T> @NotNull Signal<T> signal(@NotNull SignalKey<T> key) {
+        ensureComponentsInitialized();
+        return container.signal(key);
     }
 
-    protected boolean onUnhandledWrenchRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
+    @Override
+    public final <T> @NotNull T[] listeners(@NotNull SignalKey<T> key) {
+        ensureComponentsInitialized();
+        return container.listeners(key);
+    }
+
+    @Override
+    public final boolean hasListeners(@NotNull SignalKey<?> key) {
+        ensureComponentsInitialized();
+        return container.hasListeners(key);
+    }
+
+    protected <T> @NotNull Connection connect(@NotNull SignalKey<T> key, @NotNull T listener) {
+        return connect(key, 0, listener);
+    }
+
+    protected <T> @NotNull Connection connect(@NotNull SignalKey<T> key, int priority, @NotNull T listener) {
+        return signal(key).connect(this, priority, listener);
+    }
+
+    @Override
+    public final boolean onWrenchRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
         EntityPlayer entityPlayer, float aX, float aY, float aZ, ItemStack aTool) {
+        for (var listener : listeners(ON_WRENCH_CLICK)) {
+            if (listener.onToolRightClick(side, wrenchingSide, entityPlayer, aX, aY, aZ, aTool)) return true;
+        }
         return super.onWrenchRightClick(side, wrenchingSide, entityPlayer, aX, aY, aZ, aTool);
     }
 
     @Override
     public final void onScrewdriverRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY, float aZ,
         ItemStack aTool) {
-        for (var comp : getComponents(IOnScrewdriverClickComponent.KEY)) {
-            if (comp.onScrewdriverRightClick(side, aPlayer, aX, aY, aZ, aTool)) return;
+        for (var listener : listeners(ON_SCREWDRIVER_CLICK)) {
+            if (listener.onToolRightClick(side, null, aPlayer, aX, aY, aZ, aTool)) return;
         }
-        onUnhandledScrewdriverRightClick(side, aPlayer, aX, aY, aZ, aTool);
-    }
-
-    protected void onUnhandledScrewdriverRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY,
-        float aZ, ItemStack aTool) {
         super.onScrewdriverRightClick(side, aPlayer, aX, aY, aZ, aTool);
     }
 
     @Override
     public final boolean onWireCutterRightClick(ForgeDirection side, ForgeDirection wrenchingSide, EntityPlayer aPlayer,
         float aX, float aY, float aZ, ItemStack aTool) {
-        for (var comp : getComponents(IOnWireCutterClickComponent.KEY)) {
-            if (comp.onWireCutterRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool)) return true;
+        for (var listener : listeners(ON_WIRE_CUTTER_CLICK)) {
+            if (listener.onToolRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool)) return true;
         }
-        return onUnhandledWireCutterRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool);
-    }
-
-    protected boolean onUnhandledWireCutterRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
-        EntityPlayer aPlayer, float aX, float aY, float aZ, ItemStack aTool) {
         return super.onWireCutterRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool);
     }
 
     @Override
     public final boolean onSolderingToolRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
         EntityPlayer aPlayer, float aX, float aY, float aZ, ItemStack aTool) {
-        for (var comp : getComponents(IOnSolderingToolClickComponent.KEY)) {
-            if (comp.onSolderingToolRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool)) return true;
+        for (var listener : listeners(ON_SOLDERING_TOOL_CLICK)) {
+            if (listener.onToolRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool)) return true;
         }
-        return onUnhandledSolderingToolRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool);
-    }
-
-    protected boolean onUnhandledSolderingToolRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
-        EntityPlayer aPlayer, float aX, float aY, float aZ, ItemStack aTool) {
         return super.onSolderingToolRightClick(side, wrenchingSide, aPlayer, aX, aY, aZ, aTool);
     }
 
@@ -210,36 +213,31 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
 
     @Override
     public void onDisableWorking() {
-        for (var component : getComponents(IOnWorkStateChangeComponent.KEY)) {
-            component.onDisableWorking();
+        for (var listener : listeners(ON_WORK_STATE_CHANGE)) {
+            listener.onWorkStateChanged(false);
         }
     }
 
     @Override
     public void onEnableWorking() {
-        for (var component : getComponents(IOnWorkStateChangeComponent.KEY)) {
-            component.onEnableWorking();
+        for (var listener : listeners(ON_WORK_STATE_CHANGE)) {
+            listener.onWorkStateChanged(true);
         }
     }
 
     @Override
     public final void doSound(byte aIndex, double aX, double aY, double aZ) {
         super.doSound(aIndex, aX, aY, aZ);
-        for (var component : getComponents(IClientSoundComponent.KEY)) {
-            if (component.onDoSound(aIndex, aX, aY, aZ)) return;
+        for (var listener : listeners(ON_DO_SOUND)) {
+            if (listener.onDoSound(aIndex, aX, aY, aZ)) return;
         }
-        onUnhandledDoSound(aIndex, aX, aY, aZ);
-    }
-
-    protected void onUnhandledDoSound(byte aIndex, double aX, double aY, double aZ) {
-
     }
 
     @Override
     public void startSoundLoop(byte aIndex, double aX, double aY, double aZ) {
         super.startSoundLoop(aIndex, aX, aY, aZ);
-        for (var component : getComponents(IClientSoundComponent.KEY)) {
-            component.onStartSoundLoop(aIndex, aX, aY, aZ);
+        for (var listener : listeners(ON_START_SOUND_LOOP)) {
+            listener.onStartSoundLoop(aIndex, aX, aY, aZ);
         }
     }
 
@@ -248,14 +246,8 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
     private void updateActiveState(@NotNull IGregTechTileEntity igte, boolean active) {
         if (lastActive == active) return;
         lastActive = active;
-        if (active) {
-            for (int i = 0; i < activeStateChanges.length; i++) {
-                activeStateChanges[i].onMachineActivated(igte);
-            }
-        } else {
-            for (int i = 0; i < activeStateChanges.length; i++) {
-                activeStateChanges[i].onMachineDeactivated(igte);
-            }
+        for (var listener : listeners(ON_ACTIVE_STATE_CHANGE)) {
+            listener.onActiveStateChanged(igte, active);
         }
     }
 
@@ -271,8 +263,8 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
     @Override
     public void onFirstTick(IGregTechTileEntity aBaseMetaTileEntity) {
         super.onFirstTick(aBaseMetaTileEntity);
-        for (var comp : getComponents(IOnFirstTickComponent.KEY)) {
-            comp.onFirstTick(aBaseMetaTileEntity);
+        for (var listener : listeners(ON_FIRST_TICK)) {
+            listener.onFirstTick(aBaseMetaTileEntity);
         }
     }
 
@@ -287,8 +279,8 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
         super.onTickFail(aBaseMetaTileEntity, aTick);
         if (aBaseMetaTileEntity.isServerSide()) {
             aBaseMetaTileEntity.disableWorking();
-            for (var component : getComponents(IOnServerTickFailComponent.KEY)) {
-                component.onServerTickFail(aBaseMetaTileEntity, aTick);
+            for (var listener : listeners(ON_SERVER_TICK_FAIL)) {
+                listener.onServerTickFail(aBaseMetaTileEntity, aTick);
             }
         }
     }
@@ -296,16 +288,16 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
     @Override
     public void onRemoval() {
         super.onRemoval();
-        for (var component : getComponents(IOnMachineRemovalComponent.KEY)) {
-            component.onMachineRemoval();
+        for (var listener : listeners(ON_MACHINE_REMOVAL)) {
+            listener.onMachineRemoval();
         }
     }
 
     @Override
     public void onUnload() {
         super.onUnload();
-        for (var component : getComponents(IOnMachineUnloadComponent.KEY)) {
-            component.onMachineUnload();
+        for (var listener : listeners(ON_MACHINE_UNLOAD)) {
+            listener.onMachineUnload();
         }
     }
 
@@ -358,16 +350,57 @@ public abstract class MetaTileEntityECBase extends MetaTileEntity implements IEC
     @Override
     public void onPostTick(IGregTechTileEntity aBaseMetaTileEntity, long aTick) {
         if (aBaseMetaTileEntity.isServerSide()) {
-            for (int i = 0; i < serverPostTicks.length; i++) {
-                serverPostTicks[i].onServerPostTick(aBaseMetaTileEntity, aTick);
+            for (var listener : serverPostTicks.listeners()) {
+                listener.onServerPostTick(aBaseMetaTileEntity, aTick);
             }
-        } else if (clientPostTicks.length == 0) {
+        } else if (!needsClientTick) {
             aBaseMetaTileEntity.tryDisableTicking();
         } else {
-            for (int i = 0; i < clientPostTicks.length; i++) {
-                clientPostTicks[i].onClientPostTick(aBaseMetaTileEntity, aTick);
+            for (var listener : clientPostTicks.listeners()) {
+                listener.onClientPostTick(aBaseMetaTileEntity, aTick);
             }
         }
     }
 
+    @Override
+    public String[] getInfoData() {
+        OrderedSectionBuilder<Consumer<List<String>>> builder = new OrderedSectionBuilder<>();
+        for (var listener : listeners(SCANNER_INFO_DATA_PROVIDER)) {
+            listener.appendInfoData(builder);
+        }
+        List<String> infoData = new ArrayList<>();
+        builder.forEach(consumer -> consumer.accept(infoData));
+        return infoData.toArray(new String[0]);
+    }
+
+    @Override
+    public Map<String, String> getInfoMap() {
+        Map<String, String> infoMap = new HashMap<>();
+        for (var listener : listeners(SCANNER_INFO_MAP_PROVIDER)) {
+            listener.appendInfoMap(infoMap);
+        }
+        return infoMap;
+    }
+
+    @Override
+    public void getWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x, int y,
+        int z) {
+        super.getWailaNBTData(player, tile, tag, world, x, y, z);
+        for (var listener : listeners(WAILA_DATA_PROVIDER)) {
+            listener.appendWailaNBTData(player, tile, tag, world, x, y, z);
+        }
+    }
+
+    @Override
+    public void getWailaBody(ItemStack itemStack, List<String> currentTip, IWailaDataAccessor accessor,
+        IWailaConfigHandler config) {
+        final NBTTagCompound tag = accessor.getNBTData();
+        OrderedSectionBuilder<IWailaBodyProvider.WailaBodyProvider> builder = new OrderedSectionBuilder<>();
+        for (var listener : listeners(WAILA_BODY_PROVIDER)) {
+            listener.appendWailaBody(builder);
+        }
+        var ctx = new IWailaBodyProvider.WailaBodyContext(itemStack, tag, accessor, config);
+        builder.forEach(provider -> provider.append(ctx, currentTip));
+        super.getWailaBody(itemStack, currentTip, accessor, config);
+    }
 }

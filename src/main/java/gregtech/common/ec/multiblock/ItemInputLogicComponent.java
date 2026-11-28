@@ -1,5 +1,9 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IRecipeLogicComponent.END_RECIPE_PROCESSING;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_SLOT_UPDATE;
+import static gregtech.api.ec.component.IRecipeLogicComponent.START_RECIPE_PROCESSING;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -13,10 +17,9 @@ import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IItemInputLogicComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IRecipeProcessAwareComponent;
-import gregtech.api.ec.component.ISlotUpdateAwareComponent;
 import gregtech.api.ec.component.multiblock.IHatchConfigCopyableComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockItemInputLogicComponent;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
@@ -35,8 +38,8 @@ import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
 import gregtech.common.tileentities.machines.MTEHatchInputBusME;
 import gtPlusPlus.xmod.gregtech.api.metatileentity.implementations.MTEHatchSteamBusInput;
 
-public class ItemInputLogicComponent extends BaseHatchContainerComponent implements IMultiblockItemInputLogicComponent,
-    ISlotUpdateAwareComponent, IRecipeProcessAwareComponent, IHatchConfigCopyableComponent {
+public class ItemInputLogicComponent extends BaseHatchContainerComponent
+    implements IMultiblockItemInputLogicComponent, IHatchConfigCopyableComponent {
 
     private final ArrayList<MTEHatchInputBus> mInputBusses = new ArrayList<>();
     private boolean inRecipeProcessing = false;
@@ -193,7 +196,6 @@ public class ItemInputLogicComponent extends BaseHatchContainerComponent impleme
         return result;
     }
 
-    @Override
     public void startRecipeProcessing() {
         inRecipeProcessing = true;
         for (MTEHatchInputBus hatch : getValidItemInputHatches()) {
@@ -203,7 +205,6 @@ public class ItemInputLogicComponent extends BaseHatchContainerComponent impleme
         }
     }
 
-    @Override
     public @NotNull CheckRecipeResult endRecipeProcessing() {
         inRecipeProcessing = false;
         CheckRecipeResult worstResult = CheckRecipeResultRegistry.SUCCESSFUL;
@@ -218,9 +219,16 @@ public class ItemInputLogicComponent extends BaseHatchContainerComponent impleme
         return worstResult;
     }
 
-    @Override
     public void updateSlots() {
         for (var tHatch : getValidItemInputHatches()) tHatch.updateSlots();
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SLOT_UPDATE, this::updateSlots);
+        connect(START_RECIPE_PROCESSING, this::startRecipeProcessing);
+        connect(END_RECIPE_PROCESSING, this::endRecipeProcessing);
     }
 
     private @Nullable IRecipeLogicComponent recipeLogic;

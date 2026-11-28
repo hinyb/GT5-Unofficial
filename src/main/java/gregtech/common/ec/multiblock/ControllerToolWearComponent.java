@@ -1,18 +1,20 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_TICK;
+
 import net.minecraft.item.ItemStack;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Range;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.multiblock.IControllerToolWearComponent;
 import gregtech.common.config.MachineStats;
-import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.items.MetaGeneratedTool01;
 
-public class ControllerToolWearComponent extends BaseMultiblockComponent implements IControllerToolWearComponent {
+public class ControllerToolWearComponent extends ControllerPartComponent implements IControllerToolWearComponent {
 
     private final int damageFactorLow;
     private final float damageFactorHigh;
@@ -28,26 +30,6 @@ public class ControllerToolWearComponent extends BaseMultiblockComponent impleme
         long modifier = calculateDamageModifier(eut);
         return damageCalculator.getDamageToComponent(tool) * modifier;
     }
-
-    @Override
-    public boolean isCorrectMachinePart(ItemStack aStack) {
-        return validator.isCorrectMachinePart(aStack);
-    }
-
-    @FunctionalInterface
-    public interface IToolValidator {
-
-        /**
-         * Check the ItemStack in the controller slot.
-         *
-         * @param aStack the ItemStack in the controller slot.
-         * @return {@code true} if the item is valid for this machine or the machine doesn't have restrictions on the
-         *         controller slot.
-         */
-        boolean isCorrectMachinePart(ItemStack aStack);
-    }
-
-    private final IToolValidator validator;
 
     @FunctionalInterface
     public interface IToolDamageCalculator {
@@ -72,17 +54,15 @@ public class ControllerToolWearComponent extends BaseMultiblockComponent impleme
     private final IToolDamageCalculator damageCalculator;
 
     public ControllerToolWearComponent(IToolValidator validator, IToolDamageCalculator damageCalculator) {
-        this.validator = validator;
+        super(validator);
         this.damageCalculator = damageCalculator;
         this.damageFactorLow = MachineStats.machines.damageFactorLow;
         this.damageFactorHigh = MachineStats.machines.damageFactorHigh;
     }
 
-    @Override
     public boolean onRecipeTick(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         var machine = getMachine();
         var controllerTool = machine.getControllerSlot();
-        if (!IControllerToolWearComponent.super.onRecipeTick(recipeLogicComponent)) return false;
         if (recipeLogicComponent.getRuntime() == 1000) {
             if (controllerTool != null && machine.getRandomNumber(2) == 0
                 && !controllerTool.getUnlocalizedName()
@@ -95,5 +75,11 @@ public class ControllerToolWearComponent extends BaseMultiblockComponent impleme
             }
         }
         return true;
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_RECIPE_TICK, IRecipeLogicComponent.IOnRecipeTick.CONTROLLER_PART_WEAR, this::onRecipeTick);
     }
 }

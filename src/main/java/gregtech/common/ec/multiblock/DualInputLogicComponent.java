@@ -1,5 +1,6 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.RECIPE_CHECK_HANDLER;
 import static gregtech.api.util.GTUtility.*;
 
 import java.util.ArrayList;
@@ -14,7 +15,8 @@ import net.minecraftforge.fluids.FluidStack;
 import org.apache.commons.lang3.ArrayUtils;
 import org.jetbrains.annotations.NotNull;
 
-import gregtech.api.ec.component.IRecipeCheckHandlerComponent;
+import gregtech.api.ec.IECMultiblock;
+import gregtech.api.ec.component.IProcessingLogicRecipeComponent;
 import gregtech.api.ec.component.multiblock.IDualInputLogicComponent;
 import gregtech.api.ec.component.multiblock.IHatchConfigCopyableComponent;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
@@ -30,7 +32,7 @@ import gregtech.common.tileentities.machines.IDualInputInventoryWithPattern;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputSlave;
 
 public class DualInputLogicComponent extends BaseHatchContainerComponent
-    implements IDualInputLogicComponent, IRecipeCheckHandlerComponent, IHatchConfigCopyableComponent {
+    implements IDualInputLogicComponent, IHatchConfigCopyableComponent {
 
     private final List<IDualInputHatch> mDualInputHatches = new ArrayList<>();
 
@@ -91,7 +93,6 @@ public class DualInputLogicComponent extends BaseHatchContainerComponent
         return (hatchColors & (1 << color)) == 0;
     }
 
-    @Override
     public @NotNull CheckRecipeResult tryFindRecipe(@NotNull ProcessingLogic logic,
         @NotNull CheckRecipeResult lastResult) {
         CheckRecipeResult result = lastResult;
@@ -142,8 +143,12 @@ public class DualInputLogicComponent extends BaseHatchContainerComponent
     }
 
     @Override
-    public int getRecipeCheckPriority() {
-        return RecipeCheckPriority.DUAL_INPUT.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(
+            RECIPE_CHECK_HANDLER,
+            IProcessingLogicRecipeComponent.IRecipeCheckHandler.DUAL_INPUT,
+            this::tryFindRecipe);
     }
 
     @Override

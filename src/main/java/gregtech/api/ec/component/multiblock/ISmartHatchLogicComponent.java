@@ -1,23 +1,18 @@
 package gregtech.api.ec.component.multiblock;
 
+import static gregtech.api.ec.IECMachine.ON_MACHINE_REMOVAL;
+import static gregtech.api.ec.IECMachine.ON_MACHINE_UNLOAD;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.PRE_STRUCTURE_CHECK;
+
 import org.jetbrains.annotations.NotNull;
 
 import gregtech.api.ec.ComponentKey;
-import gregtech.api.ec.component.IOnMachineRemovalComponent;
-import gregtech.api.ec.component.IOnMachineUnloadComponent;
 import gregtech.api.ec.component.IUniqueComponent;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
-import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 
-public interface ISmartHatchLogicComponent extends IMultiblockComponent, IPreStructureCheckComponent,
-    IOnMachineUnloadComponent, IOnMachineRemovalComponent, IUniqueComponent, IOnHatchAttachedComponent {
+public interface ISmartHatchLogicComponent extends IMultiblockComponent, IUniqueComponent {
 
     ComponentKey.UniqueKey<ISmartHatchLogicComponent> KEY = ComponentKey.unique();
-
-    @Override
-    default void onHatchAttached(@NotNull IMetaTileEntity metaTile, int baseCasingIndex) {
-        tryAttachSmartHatch(metaTile, baseCasingIndex);
-    }
 
     boolean tryAttachSmartHatch(@NotNull IMetaTileEntity part, int baseCasingIndex);
 
@@ -25,18 +20,9 @@ public interface ISmartHatchLogicComponent extends IMultiblockComponent, IPreStr
 
     void detachAllHatches();
 
-    @Override
-    default void onPreStructureCheck(@NotNull IGregTechTileEntity te) {
-        detachAllHatches();
-    }
-
-    @Override
-    default void onMachineUnload() {
-        detachAllHatches();
-    }
-
-    @Override
-    default void onMachineRemoval() {
-        detachAllHatches();
+    default void connectHatchLifecycle() {
+        connect(ON_MACHINE_REMOVAL, this::detachAllHatches);
+        connect(ON_MACHINE_UNLOAD, this::detachAllHatches);
+        connect(PRE_STRUCTURE_CHECK, (_) -> detachAllHatches());
     }
 }

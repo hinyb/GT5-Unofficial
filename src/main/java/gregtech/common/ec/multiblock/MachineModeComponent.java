@@ -1,20 +1,22 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.WAILA_BODY_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.IntUnaryOperator;
 
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
-import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.util.StatCollector;
 import net.minecraft.world.World;
-import net.minecraftforge.common.util.ForgeDirection;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -26,34 +28,28 @@ import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.CycleButtonWidget;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IGuiSyncableComponent;
 import gregtech.api.ec.component.IMachineModeComponent;
-import gregtech.api.ec.component.IOnScrewdriverClickComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IWailaBodyProviderComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IRecipeLockingComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IWailaBodyProvider;
 import gregtech.api.util.GTUtility;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 
-public class MachineModeComponent extends BaseMultiblockComponent
-    implements IMachineModeComponent, IOnScrewdriverClickComponent, IWailaDataComponent, ISavableComponent,
-    IWailaBodyProviderComponent, IGuiProviderComponent, IGuiSyncableComponent {
+public class MachineModeComponent extends BaseMultiblockComponent implements IMachineModeComponent, ISavableComponent {
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         tag.setString("mode", getMachineModeName());
     }
 
-    @Override
-    public void appendWailaBody(@NotNull OrderedSectionBuilder<WailaBodyProvider> builder) {
-        builder.add(IWailaBodyProviderComponent.Section.MODE, (ctx, currentTip) -> {
+    public void appendWailaBody(@NotNull OrderedSectionBuilder<IWailaBodyProvider.WailaBodyProvider> builder) {
+        builder.add(IWailaBodyProvider.Section.MODE, (ctx, currentTip) -> {
             var tag = ctx.tag();
             if (tag.hasKey("mode")) {
                 currentTip.add(
@@ -65,11 +61,10 @@ public class MachineModeComponent extends BaseMultiblockComponent
         });
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.terminalTexts()
             .add(
-                TerminalSection.MACHINE_MODE,
+                IGuiProvider.TerminalSection.MACHINE_MODE,
                 (panel, syncManager) -> IKey
                     .dynamic(
                         () -> StatCollector.translateToLocalFormatted("gt.interact.desc.mb.mode", getMachineModeName()))
@@ -77,7 +72,7 @@ public class MachineModeComponent extends BaseMultiblockComponent
                     .marginBottom(2)
                     .fullWidth());
         builder.leftGap()
-            .addIf(!machineModeIcons.isEmpty(), LeftGapSection.MACHINE_MODE, (panel, syncManager) -> {
+            .addIf(!machineModeIcons.isEmpty(), IGuiProvider.LeftGapSection.MACHINE_MODE, (panel, syncManager) -> {
                 IntSyncValue machineModeSyncer = syncManager.findSyncHandler("machineMode", IntSyncValue.class);
                 return new CycleButtonWidget() {
 
@@ -100,16 +95,9 @@ public class MachineModeComponent extends BaseMultiblockComponent
             });
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         IntSyncValue machineModeSyncer = new IntSyncValue(this::getMachineMode, this::setMachineMode).allowC2S();
         syncManager.syncValue("machineMode", machineModeSyncer);
-    }
-
-    @FunctionalInterface
-    public interface ScrewdriverClickCallback {
-
-        boolean onRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY, float aZ, ItemStack aTool);
     }
 
     private int machineMode = 0;
@@ -118,7 +106,6 @@ public class MachineModeComponent extends BaseMultiblockComponent
     private final @NotNull IntFunction<String> modeKeyProvider;
     private final @NotNull IntUnaryOperator nextModeOperator;
     private final @NotNull IntUnaryOperator prevModeOperator;
-    private @Nullable ScrewdriverClickCallback onScrewdriverRightClick = null;
     private @Nullable Runnable onModeSwitchClickCallback = null;
 
     public MachineModeComponent(@NotNull String... modeKeys) {
@@ -225,22 +212,12 @@ public class MachineModeComponent extends BaseMultiblockComponent
     }
 
     @Override
-    public boolean onScrewdriverRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY, float aZ,
-        ItemStack aTool) {
-        if (onScrewdriverRightClick != null) {
-            return onScrewdriverRightClick.onRightClick(side, aPlayer, aX, aY, aZ, aTool);
-        }
-        return false;
-    }
-
-    @Override
-    public int getOnScrewdriverClickPriority() {
-        return OnScrewdriverClickPriority.MACHINE_MODE.priority;
-    }
-
-    public @NotNull MachineModeComponent setOnScrewdriverClick(@NotNull ScrewdriverClickCallback callback) {
-        onScrewdriverRightClick = callback;
-        return this;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(WAILA_BODY_PROVIDER, this::appendWailaBody);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
     }
 
     public @NotNull MachineModeComponent setOnModeSwitchClick(@NotNull Runnable callback) {

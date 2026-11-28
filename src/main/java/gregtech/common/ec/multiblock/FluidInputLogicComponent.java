@@ -1,5 +1,9 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IRecipeLogicComponent.END_RECIPE_PROCESSING;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_SLOT_UPDATE;
+import static gregtech.api.ec.component.IRecipeLogicComponent.START_RECIPE_PROCESSING;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -15,11 +19,10 @@ import net.minecraftforge.fluids.FluidStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IFluidInputLogicComponent;
 import gregtech.api.ec.component.IItemInputLogicComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IRecipeProcessAwareComponent;
-import gregtech.api.ec.component.ISlotUpdateAwareComponent;
 import gregtech.api.ec.component.multiblock.IHatchConfigCopyableComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockFluidInputLogicComponent;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
@@ -40,8 +43,7 @@ import gregtech.common.tileentities.machines.MTEHatchInputME;
 import gtPlusPlus.xmod.gregtech.api.metatileentity.implementations.MTEHatchSolidifier;
 
 public class FluidInputLogicComponent extends BaseHatchContainerComponent
-    implements IMultiblockFluidInputLogicComponent, IItemInputLogicComponent, ISlotUpdateAwareComponent,
-    IRecipeProcessAwareComponent, IHatchConfigCopyableComponent {
+    implements IMultiblockFluidInputLogicComponent, IItemInputLogicComponent, IHatchConfigCopyableComponent {
 
     private @NotNull BooleanSupplier filterOnRecipeMap = () -> true;
 
@@ -224,7 +226,6 @@ public class FluidInputLogicComponent extends BaseHatchContainerComponent
         return result;
     }
 
-    @Override
     public void startRecipeProcessing() {
         inRecipeProcessing = true;
         for (MTEHatchInput hatch : getValidFluidInputHatches()) {
@@ -234,7 +235,6 @@ public class FluidInputLogicComponent extends BaseHatchContainerComponent
         }
     }
 
-    @Override
     public @NotNull CheckRecipeResult endRecipeProcessing() {
         inRecipeProcessing = false;
         CheckRecipeResult worstResult = CheckRecipeResultRegistry.SUCCESSFUL;
@@ -249,9 +249,16 @@ public class FluidInputLogicComponent extends BaseHatchContainerComponent
         return worstResult;
     }
 
-    @Override
     public void updateSlots() {
         for (var tHatch : getValidFluidInputHatches()) tHatch.updateSlots();
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SLOT_UPDATE, this::updateSlots);
+        connect(START_RECIPE_PROCESSING, this::startRecipeProcessing);
+        connect(END_RECIPE_PROCESSING, this::endRecipeProcessing);
     }
 
     private @Nullable IRecipeLogicComponent recipeLogic;

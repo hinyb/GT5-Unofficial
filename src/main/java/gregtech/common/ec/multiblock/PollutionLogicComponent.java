@@ -1,6 +1,11 @@
 package gregtech.common.ec.multiblock;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.ON_ACTIVE_STATE_CHANGE;
+import static gregtech.api.ec.IECMachine.ON_FIRST_TICK;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.POST_STRUCTURE_CHECK;
 import static gregtech.api.interfaces.tileentity.IGregTechDeviceInformation.encode;
 
 import java.util.ArrayList;
@@ -16,22 +21,19 @@ import org.jetbrains.annotations.Nullable;
 import gregtech.GTMod;
 import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IOnActiveStateChangeComponent;
-import gregtech.api.ec.component.IOnFirstTickComponent;
 import gregtech.api.ec.component.IPollutionEmitterComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockPollutionLogicComponent;
-import gregtech.api.ec.component.multiblock.IOnStructureStateChangeComponent;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatchMuffler;
+import gregtech.api.structure.error.StructureError;
 import gregtech.common.ec.multiblock.internal.BaseHatchContainerComponent;
 
 public class PollutionLogicComponent extends BaseHatchContainerComponent
-    implements IMultiblockPollutionLogicComponent, IOnActiveStateChangeComponent, IOnStructureStateChangeComponent,
-    ISavableComponent, IScannerInfoComponent, IOnFirstTickComponent {
+    implements IMultiblockPollutionLogicComponent, ISavableComponent {
 
     private final List<MTEHatchMuffler> mMufflerHatches = new ArrayList<>();
     private int mPollution = 0;
@@ -165,13 +167,17 @@ public class PollutionLogicComponent extends BaseHatchContainerComponent
     }
 
     @Override
-    public void onMachineActivated(@NotNull IGregTechTileEntity igte) {
-        if (igte.isServerSide()) setMufflersIfChanged(igte.isActive() && mPollution > 0);
-    }
-
-    @Override
-    public void onMachineDeactivated(@NotNull IGregTechTileEntity igte) {
-        if (igte.isServerSide()) setMufflersIfChanged(igte.isActive() && mPollution > 0);
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_ACTIVE_STATE_CHANGE, (igte, active) -> setMufflersIfChanged(active && mPollution > 0));
+        connect(ON_FIRST_TICK, (igte) -> {
+            if (igte.isServerSide()) {
+                setMufflersIfChanged(igte.isActive() && mPollution > 0);
+            }
+        });
+        connect(POST_STRUCTURE_CHECK, this::onPostStructureCheck);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
     }
 
     @Override
@@ -196,24 +202,23 @@ public class PollutionLogicComponent extends BaseHatchContainerComponent
         mPollution = nbt.getInteger("mPollution");
     }
 
-    @Override
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
         builder.addIf(
             hasComponent(IPollutionEmitterComponent.KEY),
-            Section.POLLUTION,
+            IScannerInfoDataProvider.Section.POLLUTION,
             data -> {
                 data.add(encode("GT5U.multiblock.scanner.pollution", formatNumber(getAveragePollutionPercentage())));
             });
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         map.put("pollution", Double.toString(getAveragePollutionPercentage() / 100F));
     }
 
-    @Override
-    public void onStructureFormed(@NotNull IGregTechTileEntity igte) {
-        setMufflersIfChanged(igte.isActive() && mPollution > 0);
+    public void onPostStructureCheck(@NotNull IGregTechTileEntity igte, @NotNull List<StructureError> errors) {
+        if (errors.isEmpty()) {
+            setMufflersIfChanged(igte.isActive() && mPollution > 0);
+        }
     }
 
     @Override
@@ -224,10 +229,5 @@ public class PollutionLogicComponent extends BaseHatchContainerComponent
         throw new IllegalArgumentException(
             "Multiblock must implement MetaTileEntity, but got: " + multiblock.getClass()
                 .getName());
-    }
-
-    @Override
-    public void onFirstTick(@NotNull IGregTechTileEntity igte) {
-        if (igte.isServerSide()) setMufflersIfChanged(igte.isActive() && mPollution > 0);
     }
 }

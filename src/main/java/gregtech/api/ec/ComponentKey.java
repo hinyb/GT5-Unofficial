@@ -15,29 +15,22 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import gregtech.api.ec.component.IUniqueComponent;
+import gregtech.api.ec.internal.BitKey;
 import gregtech.api.util.GTUtility;
 
-public abstract sealed class ComponentKey<T extends IComponent> permits ComponentKey.UniqueKey,ComponentKey.ListKey {
+public abstract sealed class ComponentKey<T extends IComponent>
+    extends BitKey permits ComponentKey.UniqueKey,ComponentKey.ListKey {
 
-    private static final AtomicInteger GLOBAL_ID = new AtomicInteger();
+    private static final AtomicInteger ALLOCATOR = new AtomicInteger();
     private static final Map<Class<?>, ComponentKey<?>> BY_CLASS = new ConcurrentHashMap<>();
-    public final int id;
     public @NotNull final Class<T> interfaceType;
 
-    final int wordIndex;
-    final long bitMask;
-    final long lowerMask;
-
     protected ComponentKey(@NotNull Class<T> interfaceType) {
+        super(ALLOCATOR);
         if (!interfaceType.isInterface()) {
             throw new IllegalArgumentException("ComponentKey must be created with a interface");
         }
-        this.id = GLOBAL_ID.getAndIncrement();
         this.interfaceType = interfaceType;
-        this.wordIndex = id >> 6;
-        this.bitMask = 1L << (id & 63);
-        this.lowerMask = this.bitMask - 1;
-
         if (BY_CLASS.putIfAbsent(interfaceType, this) != null) {
             throw new IllegalStateException("Duplicate ComponentKey for interface: " + interfaceType.getName());
         }
@@ -53,7 +46,7 @@ public abstract sealed class ComponentKey<T extends IComponent> permits Componen
     }
 
     public static int getKeyCount() {
-        return GLOBAL_ID.get();
+        return ALLOCATOR.get();
     }
 
     /**

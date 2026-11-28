@@ -1,5 +1,7 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.RECIPE_CHECK_HANDLER;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,8 +12,8 @@ import net.minecraftforge.fluids.FluidStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IProcessingLogicRecipeComponent;
-import gregtech.api.ec.component.IRecipeCheckHandlerComponent;
 import gregtech.api.ec.component.multiblock.IInputSeparationComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockFluidInputLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockItemInputLogicComponent;
@@ -22,7 +24,7 @@ import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.tileentities.machines.MTEHatchCraftingInputME;
 
-public class ColorRecipeCheckComponent extends BaseMultiblockComponent implements IRecipeCheckHandlerComponent {
+public class ColorRecipeCheckComponent extends BaseMultiblockComponent {
 
     private boolean canUseControllerSlotForRecipe = true;
 
@@ -55,7 +57,6 @@ public class ColorRecipeCheckComponent extends BaseMultiblockComponent implement
         return (hatchColors & (1 << color)) == 0;
     }
 
-    @Override
     public @NotNull CheckRecipeResult tryFindRecipe(@NotNull ProcessingLogic logic,
         @NotNull CheckRecipeResult lastResult) {
         CheckRecipeResult result = lastResult;
@@ -122,8 +123,12 @@ public class ColorRecipeCheckComponent extends BaseMultiblockComponent implement
     }
 
     @Override
-    public int getRecipeCheckPriority() {
-        return RecipeCheckPriority.STAND_INPUT.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(
+            RECIPE_CHECK_HANDLER,
+            IProcessingLogicRecipeComponent.IRecipeCheckHandler.STANDARD_INPUT,
+            this::tryFindRecipe);
     }
 
     private @Nullable IMultiblockItemInputLogicComponent itemInputLogic;

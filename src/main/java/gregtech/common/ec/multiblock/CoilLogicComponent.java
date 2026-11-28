@@ -1,18 +1,21 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.ON_ACTIVE_STATE_CHANGE;
+import static gregtech.api.ec.IECMachine.ON_MACHINE_REMOVAL;
+import static gregtech.api.ec.IECMachine.ON_MACHINE_UNLOAD;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.ON_STRUCTURE_VERIFY;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.POST_STRUCTURE_CHECK;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.PRE_STRUCTURE_CHECK;
+
 import java.util.List;
 import java.util.function.Consumer;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import gregtech.api.ec.component.IOnActiveStateChangeComponent;
-import gregtech.api.ec.component.IOnMachineRemovalComponent;
-import gregtech.api.ec.component.IOnMachineUnloadComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.multiblock.ICoilLogicComponent;
-import gregtech.api.ec.component.multiblock.IPostStructureCheckComponent;
-import gregtech.api.ec.component.multiblock.IPreStructureCheckComponent;
-import gregtech.api.ec.component.multiblock.IStructureCheckHandlerComponent;
+import gregtech.api.ec.component.multiblock.IStructureLogicComponent;
 import gregtech.api.enums.HeatingCoilLevel;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.structure.error.StructureError;
@@ -21,9 +24,7 @@ import gregtech.common.data.GTCoilTracker;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 
-public class CoilLogicComponent extends BaseMultiblockComponent
-    implements ICoilLogicComponent, IPreStructureCheckComponent, IOnMachineUnloadComponent, IOnMachineRemovalComponent,
-    IOnActiveStateChangeComponent, IPostStructureCheckComponent, IStructureCheckHandlerComponent {
+public class CoilLogicComponent extends BaseMultiblockComponent implements ICoilLogicComponent {
 
     private final LongArrayList mCoils = new LongArrayList();
     private GTCoilTracker.MultiCoilLease coilLease = null;
@@ -74,22 +75,6 @@ public class CoilLogicComponent extends BaseMultiblockComponent
         deactivateCoilLease();
     }
 
-    @Override
-    public void onMachineUnload() {
-        clearAndDeactivate();
-    }
-
-    @Override
-    public void onMachineRemoval() {
-        clearAndDeactivate();
-    }
-
-    @Override
-    public void onPreStructureCheck(@NotNull IGregTechTileEntity te) {
-        clearAndDeactivate();
-    }
-
-    @Override
     public void onPostStructureCheck(@NotNull IGregTechTileEntity te, @NotNull List<StructureError> errors) {
         if (errors.isEmpty()) {
             if (te.isActive()) {
@@ -102,29 +87,25 @@ public class CoilLogicComponent extends BaseMultiblockComponent
     }
 
     @Override
-    public int getPostStructureCheckPriority() {
-        return PostStructureCheckPriority.COIL.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_ACTIVE_STATE_CHANGE, (igte, active) -> {
+            if (active && isMachineFormed()) {
+                activateCoilLease();
+            } else if (!active) {
+                deactivateCoilLease();
+            }
+        });
+        connect(ON_MACHINE_REMOVAL, this::clearAndDeactivate);
+        connect(ON_MACHINE_UNLOAD, this::clearAndDeactivate);
+        connect(PRE_STRUCTURE_CHECK, (_) -> clearAndDeactivate());
+        connect(POST_STRUCTURE_CHECK, IStructureLogicComponent.IPostStructureCheck.COIL, this::onPostStructureCheck);
+        connect(ON_STRUCTURE_VERIFY, IStructureLogicComponent.IStructureCheckHandler.COIL, this::checkMachine);
     }
 
-    @Override
-    public void onMachineActivated(@NotNull IGregTechTileEntity igte) {
-        if (igte.isServerSide() && isMachineFormed()) activateCoilLease();
-    }
-
-    @Override
-    public void onMachineDeactivated(@NotNull IGregTechTileEntity igte) {
-        if (igte.isServerSide()) deactivateCoilLease();
-    }
-
-    @Override
     public void checkMachine(@NotNull IGregTechTileEntity aBaseMetaTileEntity, @NotNull List<StructureError> errors) {
         if (coilLevel == HeatingCoilLevel.None) {
             errors.add(StructureErrorRegistry.COIL_LEVEL_NOT_ENOUGH);
         }
-    }
-
-    @Override
-    public int getStructureCheckPriority() {
-        return StructureCheckPriority.COIL.priority;
     }
 }

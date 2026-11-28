@@ -1,5 +1,8 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_TICK;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.ON_STRUCTURE_VERIFY;
+
 import java.util.List;
 
 import javax.annotation.Nullable;
@@ -9,11 +12,11 @@ import net.minecraft.item.ItemStack;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Range;
 
-import gregtech.api.ec.component.IOnRecipeTickComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IPollutionEmitterComponent;
 import gregtech.api.ec.component.IPollutionLogicComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.multiblock.IStructureCheckHandlerComponent;
+import gregtech.api.ec.component.multiblock.IStructureLogicComponent;
 import gregtech.api.enums.ECHatchElement;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.structure.error.ErrorType;
@@ -22,20 +25,13 @@ import gregtech.api.structure.error.StructureErrors;
 import gregtech.api.util.shutdown.ShutDownReasonRegistry;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
-public class PollutionEmitterComponent extends BaseMultiblockComponent
-    implements IPollutionEmitterComponent, IOnRecipeTickComponent, IStructureCheckHandlerComponent {
+public class PollutionEmitterComponent extends BaseMultiblockComponent implements IPollutionEmitterComponent {
 
-    @Override
     public void checkMachine(@NotNull IGregTechTileEntity aBaseMetaTileEntity, @NotNull List<StructureError> errors) {
         int count = (int) ECHatchElement.Muffler.count(getMachine());
         if (count < 1) {
             errors.add(StructureErrors.hatchCount(ErrorType.TOO_FEW, ECHatchElement.Muffler, count, 1));
         }
-    }
-
-    @Override
-    public int getStructureCheckPriority() {
-        return StructureCheckPriority.POLLUTION.priority;
     }
 
     @FunctionalInterface
@@ -64,7 +60,6 @@ public class PollutionEmitterComponent extends BaseMultiblockComponent
         return pollutionCalculator.getPollutionPerSecond(aStack);
     }
 
-    @Override
     public boolean onRecipeTick(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         if (!pollutionLogic.polluteEnvironment(getPollutionPerTick(getMachine().getControllerSlot()))) {
             stopMachine(ShutDownReasonRegistry.POLLUTION_FAIL);
@@ -74,8 +69,10 @@ public class PollutionEmitterComponent extends BaseMultiblockComponent
     }
 
     @Override
-    public int getRecipeTickPriority() {
-        return RecipeTickPriority.POLLUTE.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_RECIPE_TICK, IRecipeLogicComponent.IOnRecipeTick.POLLUTE, this::onRecipeTick);
+        connect(ON_STRUCTURE_VERIFY, IStructureLogicComponent.IStructureCheckHandler.POLLUTION, this::checkMachine);
     }
 
     private IPollutionLogicComponent pollutionLogic;

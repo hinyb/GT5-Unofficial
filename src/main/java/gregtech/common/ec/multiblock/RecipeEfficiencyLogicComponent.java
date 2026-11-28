@@ -1,6 +1,15 @@
 package gregtech.common.ec.multiblock;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.IECMultiblock.ON_MACHINE_STOP;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_FINISH;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_IDLE;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_START;
 import static gregtech.api.interfaces.tileentity.IGregTechDeviceInformation.encode;
 
 import java.util.List;
@@ -25,26 +34,20 @@ import com.cleanroommc.modularui.api.drawable.IKey;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnMachineStopComponent;
-import gregtech.api.ec.component.IOnRecipeFinishComponent;
-import gregtech.api.ec.component.IOnRecipeIdleComponent;
-import gregtech.api.ec.component.IOnRecipeStartComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IMaintenanceLogicComponent;
 import gregtech.api.ec.component.multiblock.IRecipeEfficiencyLogicComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.util.shutdown.ShutDownReason;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
-public class RecipeEfficiencyLogicComponent extends BaseMultiblockComponent implements IRecipeEfficiencyLogicComponent,
-    IOnRecipeStartComponent, IOnRecipeFinishComponent, IOnRecipeIdleComponent, ISavableComponent,
-    IOnMachineStopComponent, IScannerInfoComponent, IWailaDataComponent, IGuiProviderComponent, IGuiSyncableComponent {
+public class RecipeEfficiencyLogicComponent extends BaseMultiblockComponent
+    implements IRecipeEfficiencyLogicComponent, ISavableComponent {
 
     private boolean instantMaxEfficiencyOnStart = true;
     private @NotNull ToIntFunction<IRecipeLogicComponent> increaseCalculator = _ -> 10000;
@@ -62,30 +65,17 @@ public class RecipeEfficiencyLogicComponent extends BaseMultiblockComponent impl
         return this;
     }
 
-    @Override
     public void onRecipeFinish(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         mEfficiency = Math.clamp(mEfficiency + mEfficiencyIncrease, 0, getEffectiveMaxEfficiency());
         mEfficiencyIncrease = 0;
     }
 
-    @Override
-    public int getRecipeFinishPriority() {
-        return RecipeFinishPriority.EFFICIENCY.priority;
-    }
-
-    @Override
     public void onRecipeIdle(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         if (mEfficiency > 0) {
             mEfficiency = Math.max(0, mEfficiency - mEfficiencyDecrease);
         }
     }
 
-    @Override
-    public int getRecipeIdlePriority() {
-        return RecipeIdlePriority.EFFICIENCY.priority;
-    }
-
-    @Override
     public void onRecipeStart(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         if (instantMaxEfficiencyOnStart) {
             mEfficiency = getEffectiveMaxEfficiency();
@@ -95,47 +85,50 @@ public class RecipeEfficiencyLogicComponent extends BaseMultiblockComponent impl
         }
     }
 
-    @Override
-    public int getRecipeStartPriority() {
-        return RecipeStartPriority.EFFICIENCY.priority;
-    }
-
-    @Override
     public void onMachineStop(@NotNull ShutDownReason reason) {
         mEfficiency = 0;
         mEfficiencyIncrease = 0;
     }
 
     @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_MACHINE_STOP, this::onMachineStop);
+        connect(ON_RECIPE_FINISH, IRecipeLogicComponent.IOnRecipeFinish.EFFICIENCY, this::onRecipeFinish);
+        connect(ON_RECIPE_IDLE, IRecipeLogicComponent.IOnRecipeIdle.EFFICIENCY, this::onRecipeIdle);
+        connect(ON_RECIPE_START, IRecipeLogicComponent.IOnRecipeStart.EFFICIENCY, this::onRecipeStart);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
+    }
+
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
         builder.addIf(
             mEfficiency > 0,
-            Section.EFFICIENCY,
+            IScannerInfoDataProvider.Section.EFFICIENCY,
             data -> { data.add(encode("GT5U.multiblock.scanner.efficiency", formatNumber(mEfficiency / 100.0F))); });
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         map.put("energyEfficiency", Double.toString(mEfficiency / 10_000F));
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         tag.setFloat("efficiency", mEfficiency / 100.0F);
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         if (showInTerminal) {
             syncManager.syncValue("efficiency", new IntSyncValue(this::getEfficiency));
         }
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.terminalTexts()
-            .addIf(showInTerminal, TerminalSection.EFFICIENCY, (panel, syncManager) -> {
+            .addIf(showInTerminal, IGuiProvider.TerminalSection.EFFICIENCY, (panel, syncManager) -> {
                 IntSyncValue efficiency = syncManager.findSyncHandler("efficiency", IntSyncValue.class);
                 return IKey.dynamic(
                     () -> EnumChatFormatting.WHITE + StatCollector.translateToLocal("GT5U.multiblock.efficiency")

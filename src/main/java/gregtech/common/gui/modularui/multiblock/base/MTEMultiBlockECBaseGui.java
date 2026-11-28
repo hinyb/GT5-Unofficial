@@ -1,5 +1,7 @@
 package gregtech.common.gui.modularui.multiblock.base;
 
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
 import static gregtech.api.enums.Mods.GregTech;
 import static gregtech.api.metatileentity.BaseTileEntity.BUTTON_FEATURE_DISABLED_TOOLTIP;
 import static gregtech.api.metatileentity.BaseTileEntity.BUTTON_FEATURE_ENABLED_TOOLTIP;
@@ -61,13 +63,12 @@ import com.gtnewhorizons.modularui.api.NumberFormatMUI;
 import com.gtnewhorizons.modularui.common.internal.network.NetworkUtils;
 
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IGuiSyncableComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IMaintenanceLogicComponent;
 import gregtech.api.ec.component.multiblock.IStructureLogicComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.implementations.MTEMultiBlockECBase;
+import gregtech.api.ec.signal.IGuiProvider;
 import gregtech.api.enums.VoidingMode;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.gui.ItemDisplayKey;
@@ -147,8 +148,8 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
         registerSyncValues(syncManager);
         MultiblockGuiBuilder builder = new MultiblockGuiBuilder();
         registerDefaultGuiSections(builder);
-        for (var comp : multiblock.getComponents(IGuiProviderComponent.KEY)) {
-            comp.configureGui(builder);
+        for (var listener : multiblock.listeners(GUI_PROVIDER)) {
+            listener.configureGui(builder);
         }
         multiblock.configureGui(builder);
         ModularPanel panel = getBasePanel(guiData, syncManager, uiSettings);
@@ -162,7 +163,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
         var maintenanceLogic = multiblock.tryGetComponent(IMaintenanceLogicComponent.KEY);
         builder.terminalTexts()
             .add(
-                IGuiProviderComponent.TerminalSection.START_UP,
+                IGuiProvider.TerminalSection.START_UP,
                 (panel, syncManager) -> IKey.lang("GT5U.multiblock.startup")
                     .color(Color.WHITE.main)
                     .asWidget()
@@ -172,7 +173,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                     .fullWidth())
             .addIf(
                 showRunningTextInGui(),
-                IGuiProviderComponent.TerminalSection.RUNNING,
+                IGuiProvider.TerminalSection.RUNNING,
                 (panel,
                     syncManager) -> new TextWidget<>(
                         StatCollector.translateToLocalFormatted("gt.interact.desc.mb.running")).color(Color.WHITE.main)
@@ -183,30 +184,30 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                             .marginBottom(2)
                             .fullWidth())
             .add(
-                IGuiProviderComponent.TerminalSection.SHUTDOWN_REASON,
+                IGuiProvider.TerminalSection.SHUTDOWN_REASON,
                 (panel, syncManager) -> createShutdownReasonWidget(syncManager))
             .add(
-                IGuiProviderComponent.TerminalSection.STRUCTURE_ERRORS,
+                IGuiProvider.TerminalSection.STRUCTURE_ERRORS,
                 (panel, syncManager) -> createStructureErrorWidget(syncManager));
         if (recipeLogic != null) {
             builder.terminalTexts()
                 .add(
-                    IGuiProviderComponent.TerminalSection.SHUTDOWN_DURATION,
+                    IGuiProvider.TerminalSection.SHUTDOWN_DURATION,
                     (panel, syncManager) -> createShutdownDurationWidget(syncManager, recipeLogic))
                 .add(
-                    IGuiProviderComponent.TerminalSection.RECIPE_RESULT,
+                    IGuiProvider.TerminalSection.RECIPE_RESULT,
                     (panel, syncManager) -> createRecipeResultWidget(recipeLogic))
                 .addIf(
                     showRecipeTextInGui(),
-                    IGuiProviderComponent.TerminalSection.RECIPE_PROGRESS,
+                    IGuiProvider.TerminalSection.RECIPE_PROGRESS,
                     (panel, syncManager) -> createRecipeInfoTextWidget(syncManager, recipeLogic))
                 .addIf(
                     showRecipeTextInGui(),
-                    IGuiProviderComponent.TerminalSection.RECIPE_OUTPUTS,
+                    IGuiProvider.TerminalSection.RECIPE_OUTPUTS,
                     (panel, syncManager) -> createRecipeInfoWidget(syncManager))
                 .addIf(
                     showPendingOutputsInGui(),
-                    IGuiProviderComponent.TerminalSection.PENDING_TITLE,
+                    IGuiProvider.TerminalSection.PENDING_TITLE,
                     (panel,
                         syncManager) -> new TextWidget<>(
                             StatCollector.translateToLocalFormatted("gt.interact.desc.mb.pending"))
@@ -216,14 +217,14 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                                 .fullWidth())
                 .addIf(
                     showPendingOutputsInGui(),
-                    IGuiProviderComponent.TerminalSection.PENDING_OUTPUTS,
+                    IGuiProvider.TerminalSection.PENDING_OUTPUTS,
                     (panel, syncManager) -> createPendingInfoWidget(syncManager));
         }
 
         builder.leftGap()
             .addIf(
                 shouldDisplayVoidExcess(),
-                IGuiProviderComponent.LeftGapSection.VOIDING,
+                IGuiProvider.LeftGapSection.VOIDING,
                 (panel, syncManager) -> createDisabledButton(
                     VoidingMode.VOID_ALL.buttonOverlay,
                     (t) -> t.addLine(IKey.dynamic(() -> StatCollector.translateToLocal("GT5U.gui.button.voiding_mode")))
@@ -231,7 +232,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                         .addLine(IKey.lang(BUTTON_FORBIDDEN_TOOLTIP))))
             .addIf(
                 shouldDisplayInputSeparation(),
-                IGuiProviderComponent.LeftGapSection.INPUT_SEPARATION,
+                IGuiProvider.LeftGapSection.INPUT_SEPARATION,
                 (panel, syncManager) -> createDisabledButton(
                     GTGuiTextures.OVERLAY_BUTTON_INPUT_SEPARATION_OFF,
                     (t) -> buildDisabledFeatureTooltip(
@@ -239,7 +240,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                         StatCollector.translateToLocal("GT5U.gui.button.input_separation"))))
             .addIf(
                 shouldDisplayBatchMode(),
-                IGuiProviderComponent.LeftGapSection.BATCH_MODE,
+                IGuiProvider.LeftGapSection.BATCH_MODE,
                 (panel, syncManager) -> createDisabledButton(
                     GTGuiTextures.OVERLAY_BUTTON_BATCH_MODE_OFF,
                     (t) -> buildDisabledFeatureTooltip(
@@ -247,7 +248,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
                         StatCollector.translateToLocal("GT5U.gui.button.batch_mode"))))
             .addIf(
                 shouldDisplayRecipeLock(),
-                IGuiProviderComponent.LeftGapSection.RECIPE_LOCK,
+                IGuiProvider.LeftGapSection.RECIPE_LOCK,
                 (panel, syncManager) -> createDisabledButton(
                     GTGuiTextures.OVERLAY_BUTTON_RECIPE_UNLOCKED,
                     (t) -> buildDisabledFeatureTooltip(
@@ -256,22 +257,22 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
         builder.rightGap()
             .addIf(
                 multiblock.supportsPowerPanel(),
-                IGuiProviderComponent.RightGapSection.POWER_PANEL,
+                IGuiProvider.RightGapSection.POWER_PANEL,
                 (panel, syncManager) -> createPowerPanelButton(syncManager, panel, builder));
         builder.leftCorner();
         builder.rightCorner()
             .addIf(
                 supportsShutdownReasonHoverable(),
-                IGuiProviderComponent.RightCornerSection.SHUTDOWN_REASON,
+                IGuiProvider.RightCornerSection.SHUTDOWN_REASON,
                 (panel, syncManager) -> createShutdownReasonHoverableTerminal(syncManager))
             .addIf(
                 supportsLogo(),
-                IGuiProviderComponent.RightCornerSection.LOGO,
+                IGuiProvider.RightCornerSection.LOGO,
                 (panel, syncManager) -> makeLogoWidget(syncManager, panel));
         builder.powerPanel()
-            .add(IGuiProviderComponent.PowerPanelSection.TITLE, ((panel, syncManager) -> makeTitleTextWidget()))
+            .add(IGuiProvider.PowerPanelSection.TITLE, ((panel, syncManager) -> makeTitleTextWidget()))
             .add(
-                IGuiProviderComponent.PowerPanelSection.POWERFAIL_EVENTS,
+                IGuiProvider.PowerPanelSection.POWERFAIL_EVENTS,
                 (panel, syncManager) -> makePowerfailEventsToggleRow());
     }
 
@@ -1007,8 +1008,8 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
         BooleanSyncValue mufflerSyncer = new BooleanSyncValue(multiblock::isMuffled, multiblock::setMuffled).allowC2S();
         syncManager.syncValue("mufflerSyncer", mufflerSyncer);
 
-        for (var comp : multiblock.getComponents(IGuiSyncableComponent.KEY)) {
-            comp.registerGuiSyncValues(syncManager);
+        for (var listener : multiblock.listeners(GUI_SYNCABLE)) {
+            listener.registerGuiSyncValues(syncManager);
         }
     }
 
@@ -1078,8 +1079,7 @@ public class MTEMultiBlockECBaseGui<T extends MTEMultiBlockECBase<T>> implements
         return true;
     }
 
-    public static void appendWidgets(
-        @NotNull OrderedSectionBuilder<IGuiProviderComponent.GuiWidgetFactory> sectionBuilder,
+    public static void appendWidgets(@NotNull OrderedSectionBuilder<IGuiProvider.GuiWidgetFactory> sectionBuilder,
         @NotNull Consumer<IWidget> addr, @NotNull ModularPanel panel, @NotNull PanelSyncManager syncManager) {
         sectionBuilder.forEach(factory -> {
             var widget = factory.create(panel, syncManager);

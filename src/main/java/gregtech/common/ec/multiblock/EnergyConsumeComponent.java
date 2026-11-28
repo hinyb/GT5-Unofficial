@@ -1,6 +1,10 @@
 package gregtech.common.ec.multiblock;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_TICK;
 
 import java.util.List;
 import java.util.Map;
@@ -16,21 +20,19 @@ import net.minecraft.world.World;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
 import gregtech.api.ec.component.IEnergyInputLogicComponent;
 import gregtech.api.ec.component.IEnergyOutputLogicComponent;
-import gregtech.api.ec.component.IOnRecipeTickComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
 import gregtech.api.ec.component.multiblock.IRecipeEfficiencyLogicComponent;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.util.GTUtility;
 import gregtech.api.util.shutdown.ShutDownReasonRegistry;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
 // may need a refactor
-public class EnergyConsumeComponent extends BaseMultiblockComponent
-    implements IOnRecipeTickComponent, IScannerInfoComponent, IWailaDataComponent {
+public class EnergyConsumeComponent extends BaseMultiblockComponent {
 
     private ToLongFunction<IRecipeLogicComponent> getActualEnergyUsage;
 
@@ -52,7 +54,6 @@ public class EnergyConsumeComponent extends BaseMultiblockComponent
         return GTUtility.fastDivMul(-recipeLogicComponent.getEUt(), Math.max(1000, getEfficiency()), 10000);
     }
 
-    @Override
     public boolean onRecipeTick(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         long mEUt = recipeLogicComponent.getEUt();
         if (mEUt > 0) {
@@ -75,8 +76,12 @@ public class EnergyConsumeComponent extends BaseMultiblockComponent
     }
 
     @Override
-    public int getRecipeTickPriority() {
-        return RecipeTickPriority.CONSUME_ENERGY.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_RECIPE_TICK, IRecipeLogicComponent.IOnRecipeTick.CONSUME_ENERGY, this::onRecipeTick);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
     }
 
     private @Nullable IEnergyInputLogicComponent energyInputLogic;
@@ -96,22 +101,19 @@ public class EnergyConsumeComponent extends BaseMultiblockComponent
         return recipeLogicComponent != null ? getActualEnergyUsage.applyAsLong(recipeLogicComponent) : 0;
     }
 
-    @Override
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
-        builder.addIf(getActualEnergyUsage() > 0, Section.ENERGY_CONSUME, data -> {
-            data.add(
+        builder.addIf(
+            getActualEnergyUsage() > 0,
+            IScannerInfoDataProvider.Section.ENERGY_CONSUME,
+            data -> data.add(
                 StatCollector
-                    .translateToLocalFormatted("GT5U.multiblock.scanner.usage", formatNumber(getActualEnergyUsage())));
-
-        });
+                    .translateToLocalFormatted("GT5U.multiblock.scanner.usage", formatNumber(getActualEnergyUsage()))));
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         map.put("energyUsage", Long.toString(getActualEnergyUsage()));
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         if (recipeLogicComponent == null) return;

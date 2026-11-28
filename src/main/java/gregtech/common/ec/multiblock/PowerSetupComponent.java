@@ -1,11 +1,14 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.POST_RECIPE_CHECK;
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.PROCESSING_LOGIC_SETUP;
+
 import java.util.function.ToLongFunction;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import gregtech.api.ec.component.IPostRecipeCheckComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IProcessingLogicRecipeComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockEnergyInputLogicComponent;
 import gregtech.api.ec.component.multiblock.IPowerSetupComponent;
@@ -14,8 +17,7 @@ import gregtech.api.recipe.check.CheckRecipeResult;
 import gregtech.api.recipe.check.CheckRecipeResultRegistry;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
-public class PowerSetupComponent extends BaseMultiblockComponent
-    implements IPowerSetupComponent, IPostRecipeCheckComponent {
+public class PowerSetupComponent extends BaseMultiblockComponent implements IPowerSetupComponent {
 
     private ToLongFunction<IMultiblockEnergyInputLogicComponent> voltageProvider = IMultiblockEnergyInputLogicComponent::getAverageInputVoltage;
     private ToLongFunction<IMultiblockEnergyInputLogicComponent> amperageProvider = energyInput -> {
@@ -56,7 +58,6 @@ public class PowerSetupComponent extends BaseMultiblockComponent
         return this;
     }
 
-    @Override
     public void setupProcessingLogic(ProcessingLogic logic) {
         if (energyInputLogic != null) {
             logic.setAvailableVoltage(voltageProvider.applyAsLong(energyInputLogic));
@@ -74,12 +75,18 @@ public class PowerSetupComponent extends BaseMultiblockComponent
         getComponent(IProcessingLogicRecipeComponent.KEY);
     }
 
-    @Override
-    public @NotNull CheckRecipeResult postCheckRecipe(@NotNull CheckRecipeResult result,
+    public @NotNull CheckRecipeResult onPostRecipeCheck(@NotNull CheckRecipeResult result,
         @NotNull ProcessingLogic logic) {
         if (!extendedPower && result.wasSuccessful() && logic.getCalculatedEut() > Integer.MAX_VALUE) {
             return CheckRecipeResultRegistry.POWER_OVERFLOW;
         }
         return result;
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(POST_RECIPE_CHECK, this::onPostRecipeCheck);
+        connect(PROCESSING_LOGIC_SETUP, this::setupProcessingLogic);
     }
 }

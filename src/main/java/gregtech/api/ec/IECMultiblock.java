@@ -25,6 +25,9 @@ import gregtech.api.ec.component.multiblock.IMultiblockItemInputLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockItemOutputLogicComponent;
 import gregtech.api.ec.component.multiblock.IRecipeLockingComponent;
 import gregtech.api.ec.component.multiblock.IVoidingConfigComponent;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IGuiSyncable;
+import gregtech.api.ec.signal.IOnMachineStop;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.metatileentity.IMultiblockController;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
@@ -271,4 +274,8 @@ public interface IECMultiblock
         var comp = tryGetComponent(IMultiblockFluidInputLogicComponent.KEY);
         return comp != null ? comp.getStoredFluidsFromME() : Collections.emptyMap();
     }
+
+    SignalKey<IOnMachineStop> ON_MACHINE_STOP = SignalKey.create();
+    SignalKey<IGuiProvider> GUI_PROVIDER = SignalKey.create();
+    SignalKey<IGuiSyncable> GUI_SYNCABLE = SignalKey.create();
 }

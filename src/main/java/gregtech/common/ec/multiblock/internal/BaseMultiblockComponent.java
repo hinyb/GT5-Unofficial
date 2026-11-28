@@ -21,7 +21,10 @@ public class BaseMultiblockComponent implements IMultiblockComponent {
     @Override
     public final void onAddToMultiblock(@NotNull IECMultiblock multiblock) {
         this.multiblock = validMultiblock(multiblock);
+        onAdd(multiblock);
     }
+
+    protected void onAdd(@NotNull IECMultiblock multiblock) {}
 
     protected IECMultiblock validMultiblock(@NotNull IECMultiblock multiblock) {
         return multiblock;
@@ -38,8 +41,11 @@ public class BaseMultiblockComponent implements IMultiblockComponent {
 
     @Override
     public void onRemoveFromMachine(@NotNull IECMachine multiblock) {
+        onRemove(this.multiblock);
         this.multiblock = null;
     }
+
+    protected void onRemove(@NotNull IECMultiblock multiblock) {}
 
     protected final void markDirty() {
         getMachine().markDirty();

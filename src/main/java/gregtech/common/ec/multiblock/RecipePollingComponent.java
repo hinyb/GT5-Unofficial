@@ -1,18 +1,20 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.component.IRecipeLogicComponent.RECIPE_POLLING;
+
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import gregtech.api.ec.component.IRecipePollingComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.multiblock.IBatchConfigComponent;
 import gregtech.api.ec.component.multiblock.ISmartHatchLogicComponent;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 
-public class RecipePollingComponent extends BaseMultiblockComponent implements IRecipePollingComponent {
+public class RecipePollingComponent extends BaseMultiblockComponent {
 
     private static final int CHECK_INTERVAL = 100; // How often should we check for a new recipe on an idle machine?
     private final int randomTickOffset = (int) (Math.random() * CHECK_INTERVAL + 1);
 
-    @Override
     public boolean shouldPollRecipe(long totalRuntime, long timeElapsed) {
         if (smartHatchLogic == null || !smartHatchLogic.needsPeriodicChecks()) {
             return false;
@@ -39,5 +41,11 @@ public class RecipePollingComponent extends BaseMultiblockComponent implements I
     public void onComponentsReady() {
         smartHatchLogic = tryGetComponent(ISmartHatchLogicComponent.KEY);
         batchConfig = tryGetComponent(IBatchConfigComponent.KEY);
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(RECIPE_POLLING, this::shouldPollRecipe);
     }
 }

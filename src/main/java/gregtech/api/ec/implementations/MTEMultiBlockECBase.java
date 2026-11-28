@@ -2,6 +2,9 @@ package gregtech.api.ec.implementations;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatFluid;
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.ON_STRUCTURE_SCAN;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.ON_STRUCTURE_VERIFY;
+import static gregtech.api.ec.component.multiblock.IStructureLogicComponent.POST_STRUCTURE_CHECK;
 import static gregtech.api.enums.GTValues.V;
 import static gregtech.api.metatileentity.implementations.MTEMultiBlockBase.INTERRUPT_SOUND_INDEX;
 import static gregtech.api.util.GTUtility.*;
@@ -11,12 +14,9 @@ import static mcp.mobius.waila.api.SpecialChars.RESET;
 import static net.minecraft.util.StatCollector.translateToLocal;
 import static net.minecraft.util.StatCollector.translateToLocalFormatted;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -73,23 +73,21 @@ import gregtech.api.GregTechAPI;
 import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
 import gregtech.api.ec.component.IActivitySoundLoopComponent;
-import gregtech.api.ec.component.IOnMachineStopComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.IWailaBodyProviderComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IControllerPartComponent;
 import gregtech.api.ec.component.multiblock.IDualInputLogicComponent;
 import gregtech.api.ec.component.multiblock.IHatchContainerComponent;
 import gregtech.api.ec.component.multiblock.IMaintenanceLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockFluidOutputLogicComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockItemOutputLogicComponent;
-import gregtech.api.ec.component.multiblock.IPostStructureCheckComponent;
 import gregtech.api.ec.component.multiblock.IRecipeLockingComponent;
-import gregtech.api.ec.component.multiblock.IStructureCheckHandlerComponent;
 import gregtech.api.ec.component.multiblock.IStructureLogicComponent;
 import gregtech.api.ec.component.multiblock.IVoidingConfigComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IOnDoSound;
+import gregtech.api.ec.signal.IOnToolClick;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
+import gregtech.api.ec.signal.IWailaBodyProvider;
 import gregtech.api.enums.HarvestTool;
 import gregtech.api.enums.SoundResource;
 import gregtech.api.enums.VoidingMode;
@@ -120,7 +118,6 @@ import gregtech.api.util.shutdown.ShutDownReason;
 import gregtech.api.util.shutdown.ShutDownReasonRegistry;
 import gregtech.common.ec.multiblock.SmartHatchLogicComponent;
 import gregtech.common.ec.multiblock.StructureLogicComponent;
-import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockECBaseGui;
 import gregtech.common.pollution.Pollution;
 import gregtech.common.tileentities.machines.IDualInputHatch;
@@ -170,65 +167,25 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
         recipeLogic = tryGetComponent(IRecipeLogicComponent.KEY);
     }
 
-    private class ScanHandler extends BaseMultiblockComponent
-        implements IStructureCheckHandlerComponent, IPostStructureCheckComponent {
-
-        @Override
-        public void checkMachine(@NotNull IGregTechTileEntity igte, @NotNull List<StructureError> errors) {
-            MTEMultiBlockECBase.this.checkMachine(igte, getControllerSlot(), errors);
-        }
-
-        @Override
-        public StructureCheckPhase getStructureCheckPhase() {
-            return StructureCheckPhase.SCAN;
-        }
-
-        @Override
-        public int getStructureCheckPriority() {
-            return StructureCheckPriority.MACHINE_CHECK.priority;
-        }
-
-        @Override
-        public void onPostStructureCheck(@NotNull IGregTechTileEntity igte, @NotNull List<StructureError> errors) {
-            StructureSize size = centerWalker.finish();
-
-            if (size != null) {
-                center.set(size.centerX, size.centerY, size.centerZ);
-                structureRadius = size.radius;
-            } else {
-                center.set(igte.getXCoord(), igte.getYCoord(), igte.getZCoord());
-                structureRadius = 1;
-            }
-        }
-
-        @Override
-        public int getPostStructureCheckPriority() {
-            return PostStructureCheckPriority.STRUCTURE_BOUNDS.priority;
-        }
-    }
-
-    private class CheckHandler extends BaseMultiblockComponent implements IStructureCheckHandlerComponent {
-
-        @Override
-        public void checkMachine(@NotNull IGregTechTileEntity igte, @NotNull List<StructureError> errors) {
-            MTEMultiBlockECBase.this.verifyMachine(igte, getControllerSlot(), errors);
-        }
-
-        @Override
-        public StructureCheckPhase getStructureCheckPhase() {
-            return StructureCheckPhase.VERIFY;
-        }
-
-        @Override
-        public int getStructureCheckPriority() {
-            return StructureCheckPriority.MACHINE_CHECK.priority;
-        }
-    }
-
     protected void registerComponents() {
+        connect(ON_DO_SOUND, IOnDoSound.FALLBACK, MTEMultiBlockECBase::handleInterruptSound);
+        connect(ON_WRENCH_CLICK, IOnToolClick.FALLBACK, this::onWrenchClick);
+        connect(
+            POST_STRUCTURE_CHECK,
+            IStructureLogicComponent.IPostStructureCheck.STRUCTURE_BOUNDS,
+            this::updateStructureBounds);
+        connect(
+            ON_STRUCTURE_SCAN,
+            IStructureLogicComponent.IStructureCheckHandler.MACHINE_CHECK,
+            (igte, errors) -> checkMachine(igte, getControllerSlot(), errors));
+        connect(
+            ON_STRUCTURE_VERIFY,
+            IStructureLogicComponent.IStructureCheckHandler.MACHINE_CHECK,
+            (igte, errors) -> verifyMachine(igte, getControllerSlot(), errors));
+        connect(SCANNER_INFO_DATA_PROVIDER, this::registerDefaultScannerInfo);
+        connect(WAILA_DATA_PROVIDER, this::registerDefaultWailaNBTData);
+        connect(WAILA_BODY_PROVIDER, this::registerDefaultWailaBody);
         addComponent(new StructureLogicComponent());
-        addComponent(new ScanHandler());
-        addComponent(new CheckHandler());
         addComponent(new SmartHatchLogicComponent());
         MultiblockComponentBuilder builder = new MultiblockComponentBuilder();
         configureComponents(builder);
@@ -236,6 +193,18 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
     }
 
     protected void configureComponents(@NotNull MultiblockComponentBuilder builder) {}
+
+    private void updateStructureBounds(@NotNull IGregTechTileEntity igte, @NotNull List<StructureError> errors) {
+        StructureSize size = centerWalker.finish();
+
+        if (size != null) {
+            center.set(size.centerX, size.centerY, size.centerZ);
+            structureRadius = size.radius;
+        } else {
+            center.set(igte.getXCoord(), igte.getYCoord(), igte.getZCoord());
+            structureRadius = 1;
+        }
+    }
 
     @SideOnly(Side.CLIENT)
     private static void addTooltipResetListener() {
@@ -397,11 +366,12 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
         if (recipeLogic != null) recipeLogic.scheduleRecipeCheck(reason);
     }
 
-    @Override
-    protected void onUnhandledDoSound(byte aIndex, double aX, double aY, double aZ) {
+    private static boolean handleInterruptSound(byte aIndex, double aX, double aY, double aZ) {
         if (aIndex == INTERRUPT_SOUND_INDEX) {
             GTUtility.doSoundAtClient(SoundResource.IC2_MACHINES_INTERRUPT_ONE, 100, 1.0F, aX, aY, aZ);
+            return true;
         }
+        return false;
     }
 
     /**
@@ -411,7 +381,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
      * @return {@code true} if the item is valid for this machine or the machine doesn't have restrictions on the
      *         controller slot.
      */
-    public boolean isCorrectMachinePart(@Nullable ItemStack aStack) {
+    public final boolean isCorrectMachinePart(@Nullable ItemStack aStack) {
         for (var comp : getComponents(IControllerPartComponent.KEY)) {
             if (!comp.isCorrectMachinePart(aStack)) return false;
         }
@@ -455,8 +425,8 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
         if (!ShutDownReasonRegistry.isRegistered(reason.getID())) {
             throw new RuntimeException(String.format("Reason %s is not registered for registry", reason.getID()));
         }
-        for (var component : getComponents(IOnMachineStopComponent.KEY)) {
-            component.onMachineStop(reason);
+        for (var listener : listeners(ON_MACHINE_STOP)) {
+            listener.onMachineStop(reason);
         }
         IGregTechTileEntity igte = getBaseMetaTileEntity();
         if (igte != null) {
@@ -551,7 +521,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
     }
 
     protected void registerDefaultScannerInfo(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
-        builder.add(IScannerInfoComponent.Section.OWNER, infoData -> {
+        builder.add(IScannerInfoDataProvider.Section.OWNER, infoData -> {
             IGregTechTileEntity igte = getBaseMetaTileEntity();
             if (igte != null) {
                 infoData.add(
@@ -559,7 +529,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
 
             }
         })
-            .add(IScannerInfoComponent.Section.MTE_ID, infoData -> {
+            .add(IScannerInfoDataProvider.Section.MTE_ID, infoData -> {
                 IGregTechTileEntity igte = getBaseMetaTileEntity();
                 if (igte == null) return;
                 if (igte.getMetaTileEntity() != null) {
@@ -574,7 +544,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                     infoData.add(StatCollector.translateToLocal("GT5U.multiblock.scanner.is_meta_tile_entity"));
                 }
             })
-            .add(IScannerInfoComponent.Section.TOTAL_RUN_TIME, infoData -> {
+            .add(IScannerInfoDataProvider.Section.TOTAL_RUN_TIME, infoData -> {
                 long seconds = (this.mTotalRunTime / 20);
                 long minutes = TimeUnit.SECONDS.toMinutes(seconds);
                 long hours = TimeUnit.SECONDS.toHours(seconds);
@@ -592,30 +562,6 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
             // spotless:on
                 infoData.add(StatCollector.translateToLocalFormatted(timeKey, timeValue));
             });
-    }
-
-    @Override
-    public String[] getInfoData() {
-        OrderedSectionBuilder<Consumer<List<String>>> builder = new OrderedSectionBuilder<>();
-        registerDefaultScannerInfo(builder);
-        for (var component : getComponents(IScannerInfoComponent.KEY)) {
-            component.appendInfoData(builder);
-        }
-        appendInfoData(builder);
-        List<String> infoData = new ArrayList<>();
-        builder.forEach(consumer -> consumer.accept(infoData));
-        return infoData.toArray(new String[0]);
-    }
-
-    protected void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {}
-
-    @Override
-    public Map<String, String> getInfoMap() {
-        Map<String, String> infoMap = new HashMap<>();
-        for (var component : getComponents(IScannerInfoComponent.KEY)) {
-            component.appendInfoMap(infoMap);
-        }
-        return infoMap;
     }
 
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {}
@@ -637,8 +583,8 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
     }
 
     protected void registerDefaultWailaBody(
-        @NotNull OrderedSectionBuilder<IWailaBodyProviderComponent.WailaBodyProvider> builder) {
-        builder.add(IWailaBodyProviderComponent.Section.STATUS, (ctx, currentTip) -> {
+        @NotNull OrderedSectionBuilder<IWailaBodyProvider.WailaBodyProvider> builder) {
+        builder.add(IWailaBodyProvider.Section.STATUS, (ctx, currentTip) -> {
             var tag = ctx.tag();
             String efficiency = tag.hasKey("efficiency")
                 ? RESET
@@ -650,7 +596,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                 currentTip.add(GREEN + translateToLocal("GT5U.waila.multiblock.status.running_fine") + efficiency);
             }
         })
-            .add(IWailaBodyProviderComponent.Section.ENERGY, (ctx, currentTip) -> {
+            .add(IWailaBodyProvider.Section.ENERGY, (ctx, currentTip) -> {
                 var tag = ctx.tag();
                 boolean isActive = tag.getBoolean("isActive");
                 if (isActive) {
@@ -689,7 +635,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                     }
                 }
             })
-            .add(IWailaBodyProviderComponent.Section.OUTPUTS, (ctx, currentTip) -> {
+            .add(IWailaBodyProvider.Section.OUTPUTS, (ctx, currentTip) -> {
                 var tag = ctx.tag();
                 boolean isActive = tag.getBoolean("isActive");
                 boolean isLockedToRecipe = tag.getBoolean("isLockedToRecipe");
@@ -748,7 +694,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                     }
                 }
             })
-            .add(IWailaBodyProviderComponent.Section.PROGRESS, (ctx, currentTip) -> {
+            .add(IWailaBodyProvider.Section.PROGRESS, (ctx, currentTip) -> {
                 var tag = ctx.tag();
                 boolean isActive = tag.getBoolean("isActive");
                 // disables progress time display if recipe text is hidden
@@ -761,7 +707,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                             tag.getInteger("progress")));
                 }
             })
-            .add(IWailaBodyProviderComponent.Section.CPU_LOAD, (ctx, currentTip) -> {
+            .add(IWailaBodyProvider.Section.CPU_LOAD, (ctx, currentTip) -> {
                 var tag = ctx.tag();
                 // Show ns on the tooltip
                 if (GTMod.proxy.wailaAverageNS && tag.hasKey("averageNS")) {
@@ -770,7 +716,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                         translateToLocalFormatted("GT5U.waila.multiblock.status.cpu_load", formatNumber(tAverageTime)));
                 }
             })
-            .add(IWailaBodyProviderComponent.Section.PARALLEL, (ctx, currentTip) -> {
+            .add(IWailaBodyProvider.Section.PARALLEL, (ctx, currentTip) -> {
                 var tag = ctx.tag();
                 final int localMaxParallels = tag.getInteger("maxParallelRecipes");
                 if (localMaxParallels > 1) {
@@ -802,31 +748,11 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
             return;
         }
 
-        OrderedSectionBuilder<IWailaBodyProviderComponent.WailaBodyProvider> builder = new OrderedSectionBuilder<>();
-        registerDefaultWailaBody(builder);
-        for (var component : getComponents(IWailaBodyProviderComponent.KEY)) {
-            component.appendWailaBody(builder);
-        }
-        appendWailaBody(builder);
-        var ctx = new IWailaBodyProviderComponent.WailaBodyContext(itemStack, tag, accessor, config);
-        builder.forEach(provider -> provider.append(ctx, currentTip));
-        getExtraWailaBody(itemStack, currentTip, tag, accessor, config);
         super.getWailaBody(itemStack, currentTip, accessor, config);
     }
 
-    protected void appendWailaBody(
-        @NotNull OrderedSectionBuilder<IWailaBodyProviderComponent.WailaBodyProvider> builder) {}
-
-    public final void getMTEWailaBody(ItemStack itemStack, List<String> currentTip, IWailaDataAccessor accessor,
-        IWailaConfigHandler config) {
-        super.getWailaBody(itemStack, currentTip, accessor, config);
-    }
-
-    @Override
-    public void getWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x, int y,
-        int z) {
-        super.getWailaNBTData(player, tile, tag, world, x, y, z);
-
+    protected void registerDefaultWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world,
+        int x, int y, int z) {
         tag.setBoolean("incompleteStructure", !isFormed());
 
         final IGregTechTileEntity tileEntity = getBaseMetaTileEntity();
@@ -854,20 +780,7 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
                 tag.setInteger("averageNS", tAverageTime / samples);
             }
         }
-
-        for (var component : getComponents(IWailaDataComponent.KEY)) {
-            component.appendWailaNBTData(player, tile, tag, world, x, y, z);
-        }
-
-        getExtraWailaNBT(player, tile, tag, world, x, y, z);
     }
-
-    public void getExtraWailaNBT(EntityPlayerMP playerMP, TileEntity tileEntity, NBTTagCompound tag, World world, int x,
-        int y, int z) {}
-
-    @Deprecated
-    public void getExtraWailaBody(ItemStack itemStack, List<String> list, NBTTagCompound tag,
-        IWailaDataAccessor accessor, IWailaConfigHandler config) {}
 
     @Override
     public final boolean isDeprecated() {
@@ -1108,11 +1021,9 @@ public abstract class MTEMultiBlockECBase<T extends MTEMultiBlockECBase<T>> exte
         return canSetToDirectionAny(facing);
     }
 
-    @Override
-    public boolean onUnhandledWrenchRightClick(ForgeDirection side, ForgeDirection wrenchingSide,
-        EntityPlayer entityPlayer, float aX, float aY, float aZ, ItemStack aTool) {
-        if (wrenchingSide != getBaseMetaTileEntity().getFrontFacing())
-            return super.onUnhandledWrenchRightClick(side, wrenchingSide, entityPlayer, aX, aY, aZ, aTool);
+    protected boolean onWrenchClick(ForgeDirection side, ForgeDirection wrenchingSide, EntityPlayer entityPlayer,
+        float aX, float aY, float aZ, ItemStack aTool) {
+        if (wrenchingSide != getBaseMetaTileEntity().getFrontFacing()) return false;
         if (entityPlayer.isSneaking()) {
             if (isFlipChangeAllowed()) {
                 toolSetFlip(getFlip().isHorizontallyFlipped() ? Flip.NONE : Flip.HORIZONTAL);

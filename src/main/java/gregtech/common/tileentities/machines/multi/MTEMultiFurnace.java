@@ -121,6 +121,7 @@ public class MTEMultiFurnace extends MTEAbstractMultiFurnace<MTEMultiFurnace>
             .configureCoil(comp -> comp.setOnCoilValidated(coilLevel -> mLevel = 4 << (coilLevel.ordinal() - 1)))
             .enablePollution(GTMod.proxy.mPollutionMultiSmelterPerSecond)
             .setActivitySound(SoundResource.GT_MACHINES_EBF_LOOP);
+        connect(WAILA_DATA_PROVIDER, this::getExtraWailaNBT);
     }
 
     @Override
@@ -339,9 +340,8 @@ public class MTEMultiFurnace extends MTEAbstractMultiFurnace<MTEMultiFurnace>
                 .encode("GT5U.multiblock.recipesDone.fmt", formatNumber(recipeLogic.getRecipesDone())) };
     }
 
-    @Override
-    public void getExtraWailaNBT(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x, int y,
-        int z) {
+    protected void getExtraWailaNBT(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
+        int y, int z) {
         tag.setInteger("maxParallelRecipes", mLevel);
     }
 

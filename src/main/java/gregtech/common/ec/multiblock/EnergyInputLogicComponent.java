@@ -1,6 +1,9 @@
 package gregtech.common.ec.multiblock;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
 import static gregtech.api.enums.GTValues.VN;
 
 import java.util.ArrayList;
@@ -16,11 +19,11 @@ import net.minecraft.world.World;
 
 import org.jetbrains.annotations.NotNull;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
 import gregtech.api.ec.component.multiblock.IMultiblockEnergyInputLogicComponent;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.MetaTileEntity;
@@ -33,7 +36,7 @@ import gregtech.common.ec.multiblock.internal.BaseHatchContainerComponent;
 import tectech.thing.metaTileEntity.hatch.MTEHatchEnergyMulti;
 
 public class EnergyInputLogicComponent extends BaseHatchContainerComponent
-    implements IMultiblockEnergyInputLogicComponent, IScannerInfoComponent, IWailaDataComponent {
+    implements IMultiblockEnergyInputLogicComponent {
 
     private final List<MTEHatchEnergy> mEnergyHatches = new ArrayList<>();
     private final List<MTEHatch> mExoticEnergyHatches = new ArrayList<>();
@@ -151,9 +154,8 @@ public class EnergyInputLogicComponent extends BaseHatchContainerComponent
         return ExoticEnergyInputHelper.drainEnergy(aEU, mAllEnergyHatches);
     }
 
-    @Override
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
-        builder.add(Section.ENERGY_INPUT, data -> {
+        builder.add(IScannerInfoDataProvider.Section.ENERGY_INPUT, data -> {
             long storedEnergy = 0;
             long maxEnergy = 0;
             int hatchCount = 0;
@@ -208,7 +210,6 @@ public class EnergyInputLogicComponent extends BaseHatchContainerComponent
         });
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         long energy = 0, maxEnergy = 0, maxEnergyUsage = 0, minEnergyTier = Long.MAX_VALUE;
 
@@ -228,11 +229,18 @@ public class EnergyInputLogicComponent extends BaseHatchContainerComponent
         map.put("minEnergyTier", Long.toString(minEnergyTier));
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         if (getMachine().isActive()) {
             tag.setLong("energyTier", getInputVoltageTier());
         }
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
     }
 }

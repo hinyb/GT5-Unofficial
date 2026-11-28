@@ -1,5 +1,10 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.ON_WIRE_CUTTER_CLICK;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.PROCESSING_LOGIC_SETUP;
+
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -11,14 +16,12 @@ import org.jetbrains.annotations.Nullable;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnWireCutterClickComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IBatchConfigComponent;
-import gregtech.api.ec.component.multiblock.IProcessingLogicSetupComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
 import gregtech.api.logic.ProcessingLogic;
 import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.api.util.GTUtility;
@@ -27,8 +30,7 @@ import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockECBaseGui;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 
-public class BatchConfigComponent extends BaseMultiblockComponent implements IBatchConfigComponent, ISavableComponent,
-    IProcessingLogicSetupComponent, IOnWireCutterClickComponent, IGuiSyncableComponent, IGuiProviderComponent {
+public class BatchConfigComponent extends BaseMultiblockComponent implements IBatchConfigComponent, ISavableComponent {
 
     private boolean batchMode = Gregtech.general.batchModeInitialValue;
     private int maxBatchSize = 128;
@@ -86,12 +88,10 @@ public class BatchConfigComponent extends BaseMultiblockComponent implements IBa
         }
     }
 
-    @Override
     public void setupProcessingLogic(ProcessingLogic logic) {
         logic.setBatchSize(isBatchModeEnabled() ? getMaxBatchSize() : 1);
     }
 
-    @Override
     public boolean onWireCutterRightClick(ForgeDirection side, ForgeDirection wrenchingSide, EntityPlayer aPlayer,
         float aX, float aY, float aZ, ItemStack aTool) {
         if (aPlayer.isSneaking()) {
@@ -107,17 +107,24 @@ public class BatchConfigComponent extends BaseMultiblockComponent implements IBa
     }
 
     @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_WIRE_CUTTER_CLICK, this::onWireCutterRightClick);
+        connect(PROCESSING_LOGIC_SETUP, this::setupProcessingLogic);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
+    }
+
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         BooleanSyncValue batchModeSyncer = new BooleanSyncValue(this::isBatchModeEnabled, this::setBatchMode)
             .allowC2S();
         syncManager.syncValue("batchMode", batchModeSyncer);
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.leftGap()
             .replace(
-                LeftGapSection.BATCH_MODE,
+                IGuiProvider.LeftGapSection.BATCH_MODE,
                 (panel, syncManager) -> MTEMultiBlockECBaseGui.createActiveFeatureToggleButton(
                     syncManager.findSyncHandler("batchMode", BooleanSyncValue.class),
                     GTGuiTextures.OVERLAY_BUTTON_BATCH_MODE_OFF,

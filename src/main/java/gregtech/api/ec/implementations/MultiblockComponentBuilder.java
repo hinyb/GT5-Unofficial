@@ -20,9 +20,7 @@ import gregtech.api.ec.component.IActivitySoundLoopComponent;
 import gregtech.api.ec.component.IMachineModeComponent;
 import gregtech.api.ec.component.IPollutionLogicComponent;
 import gregtech.api.ec.component.IProcessingLogicRecipeComponent;
-import gregtech.api.ec.component.IRecipeCheckHandlerComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.ec.component.IRecipePollingComponent;
 import gregtech.api.ec.component.multiblock.CustomHatchKey;
 import gregtech.api.ec.component.multiblock.IBatchConfigComponent;
 import gregtech.api.ec.component.multiblock.ICoilLogicComponent;
@@ -116,7 +114,7 @@ public class MultiblockComponentBuilder {
     private final ComponentSlot<IRecipeEfficiencyLogicComponent, RecipeEfficiencyLogicComponent> efficiencySlot = new ComponentSlot<>(
         true,
         RecipeEfficiencyLogicComponent::new);
-    private final ComponentSlot<IRecipeCheckHandlerComponent, ColorRecipeCheckComponent> recipeCheckSlot = new ComponentSlot<>(
+    private final ComponentSlot<IComponent, ColorRecipeCheckComponent> recipeCheckSlot = new ComponentSlot<>(
         true,
         ColorRecipeCheckComponent::new);
     private final ComponentSlot<IBatchConfigComponent, BatchConfigComponent> batchModeSlot = new ComponentSlot<>(
@@ -134,7 +132,7 @@ public class MultiblockComponentBuilder {
     private final ComponentSlot<ICoilLogicComponent, CoilLogicComponent> coilSlot = new ComponentSlot<>(
         false,
         CoilLogicComponent::new);
-    private final ComponentSlot<IRecipePollingComponent, RecipePollingComponent> recipePollingSlot = new ComponentSlot<>(
+    private final ComponentSlot<IComponent, RecipePollingComponent> recipePollingSlot = new ComponentSlot<>(
         true,
         RecipePollingComponent::new);
 
@@ -393,11 +391,6 @@ public class MultiblockComponentBuilder {
         return this;
     }
 
-    public MultiblockComponentBuilder setRecipeCheck(@Nullable IRecipeCheckHandlerComponent recipeCheck) {
-        recipeCheckSlot.set(recipeCheck);
-        return this;
-    }
-
     public MultiblockComponentBuilder configureRecipeCheck(@NotNull Consumer<ColorRecipeCheckComponent> consumer) {
         recipeCheckSlot.configure(consumer);
         return this;
@@ -510,11 +503,6 @@ public class MultiblockComponentBuilder {
 
     public MultiblockComponentBuilder disableRecipePolling() {
         recipePollingSlot.disable();
-        return this;
-    }
-
-    public MultiblockComponentBuilder setRecipePolling(@Nullable IRecipePollingComponent recipePolling) {
-        recipePollingSlot.set(recipePolling);
         return this;
     }
 

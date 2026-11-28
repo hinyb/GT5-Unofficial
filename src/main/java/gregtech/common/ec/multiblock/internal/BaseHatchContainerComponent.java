@@ -2,8 +2,8 @@ package gregtech.common.ec.multiblock.internal;
 
 import org.jetbrains.annotations.NotNull;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.multiblock.IHatchContainerComponent;
-import gregtech.api.ec.component.multiblock.IOnHatchAttachedComponent;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
 import gregtech.api.metatileentity.implementations.MTEHatch;
@@ -15,8 +15,8 @@ public abstract class BaseHatchContainerComponent extends BaseMultiblockComponen
             hatch.updateTexture(baseCasingIndex);
             hatch.updateCraftingIcon(getMachine().getMachineCraftingIcon(), getMachine().getBaseMetaTileEntity());
         }
-        for (var comp : getComponents(IOnHatchAttachedComponent.KEY)) {
-            comp.onHatchAttached(metaTile, baseCasingIndex);
+        for (var listener : listeners(ON_HATCH_ATTACHED)) {
+            listener.onHatchAttached(metaTile, baseCasingIndex);
         }
     }
 
@@ -27,5 +27,11 @@ public abstract class BaseHatchContainerComponent extends BaseMultiblockComponen
                 hatch.updateCraftingIcon(null, owner);
             }
         }
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connectHatchLifecycle();
     }
 }

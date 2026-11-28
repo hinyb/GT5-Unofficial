@@ -5,11 +5,9 @@ import javax.annotation.Nonnull;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import gregtech.api.ec.component.IPostRecipeCheckComponent;
-import gregtech.api.ec.component.IPreRecipeCheckComponent;
+import gregtech.api.ec.IECMultiblock;
+import gregtech.api.ec.Signal;
 import gregtech.api.ec.component.IProcessingLogicRecipeComponent;
-import gregtech.api.ec.component.IRecipeCheckHandlerComponent;
-import gregtech.api.ec.component.multiblock.IProcessingLogicSetupComponent;
 import gregtech.api.logic.ProcessingLogic;
 import gregtech.api.recipe.RecipeMap;
 import gregtech.api.recipe.check.CheckRecipeResult;
@@ -65,8 +63,8 @@ public class RecipeLogicComponent extends BaseRecipeLogicComponent implements IP
         logic.clear();
         logic.setMachine(getMachine());
         logic.setRecipeMapSupplier(this::getRecipeMap);
-        for (var component : processingLogicSetups) {
-            component.setupProcessingLogic(logic);
+        for (var listener : processingLogicSetups.listeners()) {
+            listener.setupProcessingLogic(logic);
         }
     }
 
@@ -78,8 +76,8 @@ public class RecipeLogicComponent extends BaseRecipeLogicComponent implements IP
     protected CheckRecipeResult doCheckRecipe() {
         CheckRecipeResult result = CheckRecipeResultRegistry.NO_RECIPE;
 
-        for (var component : recipeCheckHandlers) {
-            result = component.tryFindRecipe(processingLogic, result);
+        for (var listener : recipeCheckHandlers.listeners()) {
+            result = listener.tryFindRecipe(processingLogic, result);
             if (result.wasSuccessful()) return result;
         }
 
@@ -96,10 +94,10 @@ public class RecipeLogicComponent extends BaseRecipeLogicComponent implements IP
      * @return Modified (or not modified) result
      */
     @Nonnull
-    protected CheckRecipeResult postCheckRecipe(@Nonnull CheckRecipeResult result,
+    protected CheckRecipeResult postCheckRecipe(@NotNull CheckRecipeResult result,
         @Nonnull ProcessingLogic processingLogic) {
-        for (var component : postRecipeChecks) {
-            result = component.postCheckRecipe(result, processingLogic);
+        for (var listeners : postRecipeChecks.listeners()) {
+            result = listeners.onPostRecipeCheck(result, processingLogic);
         }
         return result;
     }
@@ -116,8 +114,8 @@ public class RecipeLogicComponent extends BaseRecipeLogicComponent implements IP
      */
     @Nonnull
     public CheckRecipeResult checkProcessing() {
-        for (var comp : preRecipeChecks) {
-            var result = comp.onPreRecipeCheck(this);
+        for (var listener : preRecipeChecks.listeners()) {
+            var result = listener.onPreRecipeCheck(this);
             if (result != null) {
                 updateSlots();
                 return result;
@@ -138,17 +136,17 @@ public class RecipeLogicComponent extends BaseRecipeLogicComponent implements IP
         return result;
     }
 
-    private IPreRecipeCheckComponent[] preRecipeChecks;
-    private IRecipeCheckHandlerComponent[] recipeCheckHandlers;
-    private IProcessingLogicSetupComponent[] processingLogicSetups;
-    private IPostRecipeCheckComponent[] postRecipeChecks;
+    private Signal<IPreRecipeCheck> preRecipeChecks;
+    private Signal<IRecipeCheckHandler> recipeCheckHandlers;
+    private Signal<IProcessingLogicSetup> processingLogicSetups;
+    private Signal<IPostRecipeCheck> postRecipeChecks;
 
     @Override
-    public void onComponentsReady() {
-        super.onComponentsReady();
-        preRecipeChecks = getComponents(IPreRecipeCheckComponent.KEY);
-        recipeCheckHandlers = getComponents(IRecipeCheckHandlerComponent.KEY);
-        processingLogicSetups = getComponents(IProcessingLogicSetupComponent.KEY);
-        postRecipeChecks = getComponents(IPostRecipeCheckComponent.KEY);
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        preRecipeChecks = signal(PRE_RECIPE_CHECK);
+        recipeCheckHandlers = signal(RECIPE_CHECK_HANDLER);
+        processingLogicSetups = signal(PROCESSING_LOGIC_SETUP);
+        postRecipeChecks = signal(POST_RECIPE_CHECK);
     }
 }

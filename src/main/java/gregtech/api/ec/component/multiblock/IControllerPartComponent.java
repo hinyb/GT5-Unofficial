@@ -2,14 +2,9 @@ package gregtech.api.ec.component.multiblock;
 
 import net.minecraft.item.ItemStack;
 
-import org.jetbrains.annotations.NotNull;
-
 import gregtech.api.ec.ComponentKey;
-import gregtech.api.ec.component.IOnRecipeTickComponent;
-import gregtech.api.ec.component.IRecipeLogicComponent;
-import gregtech.api.util.shutdown.ShutDownReasonRegistry;
 
-public interface IControllerPartComponent extends IMultiblockComponent, IOnRecipeTickComponent {
+public interface IControllerPartComponent extends IMultiblockComponent {
 
     ComponentKey.ListKey<IControllerPartComponent> KEY = ComponentKey.list();
 
@@ -21,20 +16,4 @@ public interface IControllerPartComponent extends IMultiblockComponent, IOnRecip
      *         controller slot.
      */
     boolean isCorrectMachinePart(ItemStack aStack);
-
-    @Override
-    default boolean onRecipeTick(@NotNull IRecipeLogicComponent recipeLogicComponent) {
-        var machine = getMachine();
-        var controllerTool = machine.getControllerSlot();
-        if (!isCorrectMachinePart(controllerTool)) {
-            machine.stopMachine(ShutDownReasonRegistry.NO_MACHINE_PART);
-            return false;
-        }
-        return true;
-    }
-
-    @Override
-    default int getRecipeTickPriority() {
-        return RecipeTickPriority.CONTROLLER_PART_CHECK.priority;
-    }
 }

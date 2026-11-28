@@ -1,5 +1,8 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.PROCESSING_LOGIC_SETUP;
 import static gregtech.api.metatileentity.BaseTileEntity.TOOLTIP_DELAY;
 
 import java.util.Set;
@@ -17,20 +20,19 @@ import com.cleanroommc.modularui.value.sync.EnumSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 import com.cleanroommc.modularui.widgets.ButtonWidget;
 
-import gregtech.api.ec.component.IGuiSyncableComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
-import gregtech.api.ec.component.multiblock.IProcessingLogicSetupComponent;
 import gregtech.api.ec.component.multiblock.IVoidingConfigComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
 import gregtech.api.enums.VoidingMode;
 import gregtech.api.logic.ProcessingLogic;
 import gregtech.common.ec.multiblock.internal.BaseMultiblockComponent;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 
-public class VoidingConfigComponent extends BaseMultiblockComponent implements IVoidingConfigComponent,
-    IProcessingLogicSetupComponent, ISavableComponent, IGuiProviderComponent, IGuiSyncableComponent {
+public class VoidingConfigComponent extends BaseMultiblockComponent
+    implements IVoidingConfigComponent, ISavableComponent {
 
     private VoidingMode voidingMode = VoidingMode.VOID_NONE;
     private Set<VoidingMode> allowedVoidingModes = VoidingMode.ALL_OPTIONS;
@@ -67,9 +69,16 @@ public class VoidingConfigComponent extends BaseMultiblockComponent implements I
         }
     }
 
-    @Override
     public void setupProcessingLogic(ProcessingLogic logic) {
         logic.setVoidProtection(protectsExcessItem(), protectsExcessFluid());
+    }
+
+    @Override
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(PROCESSING_LOGIC_SETUP, this::setupProcessingLogic);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
     }
 
     @Override
@@ -103,7 +112,6 @@ public class VoidingConfigComponent extends BaseMultiblockComponent implements I
         loadLegacyNBTData(nbt);
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         EnumSyncValue<VoidingMode, ?> voidExcessSyncer = new EnumSyncValue<>(
             VoidingMode.class,
@@ -112,10 +120,9 @@ public class VoidingConfigComponent extends BaseMultiblockComponent implements I
         syncManager.syncValue("voidExcess", voidExcessSyncer);
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.leftGap()
-            .replace(LeftGapSection.VOIDING, (panel, syncManager) -> {
+            .replace(IGuiProvider.LeftGapSection.VOIDING, (panel, syncManager) -> {
                 @SuppressWarnings("unchecked")
                 EnumSyncValue<VoidingMode, ?> voidExcessSyncer = syncManager
                     .findSyncHandler("voidExcess", EnumSyncValue.class);

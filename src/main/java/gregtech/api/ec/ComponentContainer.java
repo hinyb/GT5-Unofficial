@@ -1,14 +1,14 @@
 package gregtech.api.ec;
 
-import java.util.Arrays;
-
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import gregtech.api.enums.GTValues;
+import gregtech.api.ec.internal.BitIndexedArray;
 
 public final class ComponentContainer {
 
+    private final @NotNull BitIndexedArray<SignalKey<?>> signals = new BitIndexedArray<>();
+    private final @NotNull BitIndexedArray<ComponentKey<?>> components = new BitIndexedArray<>();
     private final @NotNull IECMachine owner;
     private final @NotNull Runnable onHostReady;
 
@@ -64,37 +64,19 @@ public final class ComponentContainer {
         notifyDirty = false;
     }
 
-    private long[] mask = GTValues.emptyLongArray;
-    private Object[] entries = GTValues.emptyObjectArray;
-
-    private int indexOf(@NotNull ComponentKey<?> key) {
-        int w = key.wordIndex;
-        if (w >= mask.length) return -1;
-        long word = mask[w];
-        if ((word & key.bitMask) == 0) return -1;
-        int index = Long.bitCount(word & key.lowerMask);
-        for (int i = 0; i < w; i++) {
-            index += Long.bitCount(mask[i]);
-        }
-        return index;
-    }
-
     @SuppressWarnings("unchecked")
     public <T extends IComponent> @Nullable T tryGetComponent(@NotNull ComponentKey.UniqueKey<T> key) {
-        int index = indexOf(key);
-        return index != -1 ? (T) entries[index] : null;
+        return (T) components.tryGet(key);
     }
 
     public <T extends IComponent> boolean hasComponent(@NotNull ComponentKey<T> key) {
-        int w = key.wordIndex;
-        if (w >= mask.length) return false;
-        return (mask[w] & key.bitMask) != 0;
+        return components.contains(key);
     }
 
     @SuppressWarnings("unchecked")
     public <T extends IComponent> @NotNull T[] getComponents(@NotNull ComponentKey.ListKey<T> key) {
-        int index = indexOf(key);
-        return index != -1 ? (T[]) entries[index] : key.emptyArray;
+        var value = components.tryGet(key);
+        return value != null ? (T[]) value : key.emptyArray;
     }
 
     public <T extends IComponent> void addComponent(@NotNull T component) {
@@ -122,13 +104,10 @@ public final class ComponentContainer {
         }
         for (var key : keys) {
             switch (key) {
-                case ComponentKey.UniqueKey<?> _ -> addEntry(key, component);
+                case ComponentKey.UniqueKey<?> _ -> components.put(key, component);
                 case ComponentKey.ListKey<?> listKey -> {
-                    int index = indexOf(listKey);
-                    Object existing = index != -1 ? entries[index] : null;
-                    Object updated = listKey.append(existing, component);
-                    if (index != -1) entries[index] = updated;
-                    else addEntry(listKey, updated);
+                    var existing = components.tryGet(listKey);
+                    components.put(listKey, listKey.append(existing, component));
                 }
             }
         }
@@ -138,65 +117,22 @@ public final class ComponentContainer {
         }
     }
 
-    private void addEntry(@NotNull ComponentKey<?> key, @NotNull Object value) {
-        int w = key.wordIndex;
-        int denseIndex = 0;
-        if (w >= mask.length) {
-            mask = Arrays.copyOf(mask, w + 1);
-        } else {
-            denseIndex += Long.bitCount(mask[w] & key.lowerMask);
-        }
-        for (int i = 0; i < w; i++) {
-            denseIndex += Long.bitCount(mask[i]);
-        }
-        mask[w] |= key.bitMask;
-        var updated = new Object[entries.length + 1];
-        if (denseIndex > 0) {
-            System.arraycopy(entries, 0, updated, 0, denseIndex);
-        }
-        updated[denseIndex] = value;
-        if (denseIndex < entries.length) {
-            System.arraycopy(entries, denseIndex, updated, denseIndex + 1, entries.length - denseIndex);
-        }
-        entries = updated;
-    }
-
-    private void removeEntry(@NotNull ComponentKey<?> key, int denseIndex) {
-        int w = key.wordIndex;
-        mask[w] &= ~key.bitMask;
-        if (entries.length == 1) {
-            entries = GTValues.emptyObjectArray;
-            return;
-        }
-        var updated = new Object[entries.length - 1];
-        if (denseIndex > 0) {
-            System.arraycopy(entries, 0, updated, 0, denseIndex);
-        }
-        if (denseIndex < entries.length - 1) {
-            System.arraycopy(entries, denseIndex + 1, updated, denseIndex, entries.length - denseIndex - 1);
-        }
-        entries = updated;
-    }
-
     private boolean removeComponentInternal(@NotNull IComponent component) {
         boolean removed = false;
         for (var key : ComponentKey.getKeysForImpl(component.getClass())) {
-            int denseIndex = indexOf(key);
-            if (denseIndex == -1) return false;
-            Object current = entries[denseIndex];
             switch (key) {
                 case ComponentKey.UniqueKey<?> _ -> {
-                    if (current == component) {
-                        removeEntry(key, denseIndex);
-                        removed = true;
-                    }
+                    removed |= components.remove(key, component);
                 }
                 case ComponentKey.ListKey<?> listKey -> {
-                    Object updated = listKey.remove(current, component);
-                    if (updated != current) {
-                        if (updated == null) removeEntry(key, denseIndex);
-                        else entries[denseIndex] = updated;
-                        removed = true;
+                    var current = components.tryGet(listKey);
+                    if (current != null) {
+                        var updated = listKey.remove(current, component);
+                        if (updated != current) {
+                            if (updated == null) components.remove(key);
+                            else components.put(key, updated);
+                            removed = true;
+                        }
                     }
                 }
             }
@@ -205,14 +141,14 @@ public final class ComponentContainer {
     }
 
     public boolean removeComponent(@NotNull IComponent component) {
-        boolean removed = removeComponentInternal(component);
-        if (removed) {
-            component.onRemoveFromMachine(owner);
-            if (isReady()) {
-                notifyReady();
-            }
+        if (!removeComponentInternal(component)) return false;
+        disconnect(component);
+        component.onRemoveFromMachine(owner);
+        if (isReady()) {
+            notifyReady();
         }
-        return removed;
+
+        return true;
     }
 
     public <T extends IComponent> boolean removeComponent(@NotNull ComponentKey.ListKey<T> key) {
@@ -221,6 +157,7 @@ public final class ComponentContainer {
         boolean removed = false;
         for (var target : targets) {
             if (removeComponentInternal(target)) {
+                disconnect(target);
                 target.onRemoveFromMachine(owner);
                 removed = true;
             }
@@ -229,5 +166,34 @@ public final class ComponentContainer {
             notifyReady();
         }
         return removed;
+    }
+
+    /**
+     * Always returns the same instance for a given key, so callers can safely cache the reference.
+     */
+    public @NotNull <T> Signal<T> signal(@NotNull SignalKey<T> key) {
+        var existing = signals.tryGet(key);
+        if (existing != null) return (Signal<T>) existing;
+        Signal<T> signal = new Signal<>(key);
+        signals.put(key, signal);
+        return signal;
+    }
+
+    public @NotNull <T> T[] listeners(@NotNull SignalKey<T> key) {
+        var signal = (Signal<T>) signals.tryGet(key);
+        return signal != null ? signal.listeners() : key.emptyArray();
+    }
+
+    public boolean hasListeners(@NotNull SignalKey<?> key) {
+        var signal = (Signal<?>) signals.tryGet(key);
+        return signal != null && signal.hasListeners();
+    }
+
+    public void disconnect(@NotNull Object owner) {
+        signals.forEach((signal) -> ((Signal<?>) signal).disconnect(owner));
+    }
+
+    public void disconnect() {
+        signals.forEach((signal) -> ((Signal<?>) signal).disconnect());
     }
 }

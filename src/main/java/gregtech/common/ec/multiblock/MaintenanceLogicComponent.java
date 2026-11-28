@@ -1,6 +1,14 @@
 package gregtech.common.ec.multiblock;
 
 import static com.gtnewhorizon.gtnhlib.util.numberformatting.NumberFormatUtil.formatNumber;
+import static gregtech.api.ec.IECMachine.ON_SERVER_POST_TICK;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_DATA_PROVIDER;
+import static gregtech.api.ec.IECMachine.SCANNER_INFO_MAP_PROVIDER;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.component.IRecipeLogicComponent.ON_RECIPE_TICK;
+import static gregtech.api.ec.component.IRecipeLogicComponent.PRE_RUN_MACHINE;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,17 +31,15 @@ import com.cleanroommc.modularui.screen.RichTooltip;
 import com.cleanroommc.modularui.value.sync.IntSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.OrderedSectionBuilder;
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnRecipeTickComponent;
-import gregtech.api.ec.component.IOnServerPostTickComponent;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IScannerInfoComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
 import gregtech.api.ec.component.multiblock.IMaintenanceLogicComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IOnServerPostTick;
+import gregtech.api.ec.signal.IScannerInfoDataProvider;
 import gregtech.api.enums.MaintenanceIssues;
 import gregtech.api.interfaces.metatileentity.IMetaTileEntity;
 import gregtech.api.interfaces.tileentity.IGregTechTileEntity;
@@ -45,8 +51,7 @@ import gregtech.common.config.MachineStats;
 import gregtech.common.ec.multiblock.internal.BaseHatchContainerComponent;
 
 public class MaintenanceLogicComponent extends BaseHatchContainerComponent
-    implements IMaintenanceLogicComponent, ISavableComponent, IOnRecipeTickComponent, IOnServerPostTickComponent,
-    IScannerInfoComponent, IWailaDataComponent, IGuiSyncableComponent, IGuiProviderComponent {
+    implements IMaintenanceLogicComponent, ISavableComponent {
 
     private final List<MTEHatchMaintenance> mMaintenanceHatches = new ArrayList<>();
     private int state;
@@ -280,7 +285,6 @@ public class MaintenanceLogicComponent extends BaseHatchContainerComponent
         state = nbt.getInteger("state") & allowMasks;
     }
 
-    @Override
     public void onServerPostTick(IGregTechTileEntity te, long aTick) {
         if (isMachineFormed()) {
             checkMaintenance();
@@ -291,11 +295,18 @@ public class MaintenanceLogicComponent extends BaseHatchContainerComponent
     }
 
     @Override
-    public int getServerTickPriority() {
-        return ServerTickPriority.MAINTAIN.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SERVER_POST_TICK, IOnServerPostTick.MAINTAIN, this::onServerPostTick);
+        connect(ON_RECIPE_TICK, IRecipeLogicComponent.IOnRecipeTick.RANDOM_MAINTAIN_ISSUE, this::onRecipeTick);
+        connect(SCANNER_INFO_DATA_PROVIDER, this::appendInfoData);
+        connect(SCANNER_INFO_MAP_PROVIDER, this::appendInfoMap);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
+        connect(PRE_RUN_MACHINE, (_, _, _) -> getRepairStatus() > 0);
     }
 
-    @Override
     public boolean onRecipeTick(@NotNull IRecipeLogicComponent recipeLogicComponent) {
         if (!randomMaintenanceDamage || MachineStats.machines.disableMaintenanceChecks) return true;
         if (recipeLogicComponent.getRuntime() == 1000) {
@@ -306,14 +317,8 @@ public class MaintenanceLogicComponent extends BaseHatchContainerComponent
         return true;
     }
 
-    @Override
-    public int getRecipeTickPriority() {
-        return RecipeTickPriority.RANDOM_MAINTAIN_ISSUE.priority;
-    }
-
-    @Override
     public void appendInfoData(@NotNull OrderedSectionBuilder<Consumer<List<String>>> builder) {
-        builder.add(Section.MAINTAIN, data -> {
+        builder.add(IScannerInfoDataProvider.Section.MAINTAIN, data -> {
             data.add(
                 StatCollector.translateToLocalFormatted(
                     "GT5U.multiblock.scanner.problems",
@@ -321,26 +326,22 @@ public class MaintenanceLogicComponent extends BaseHatchContainerComponent
         });
     }
 
-    @Override
     public void appendInfoMap(@NotNull Map<String, String> map) {
         map.put("maintenanceIssues", Integer.toString(getIdealStatus() - getRepairStatus()));
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         tag.setBoolean("hasProblems", (getIdealStatus() - getRepairStatus()) > 0);
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         syncManager.syncValue("maintState", new IntSyncValue(() -> state, val -> state = val));
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.rightCorner()
-            .add(RightCornerSection.MAINTAIN, ((panel, syncManager) -> new DynamicDrawable(() -> {
+            .add(IGuiProvider.RightCornerSection.MAINTAIN, ((panel, syncManager) -> new DynamicDrawable(() -> {
                 int count = getMaintenanceErrorCount();
                 if (count == 0) return GTGuiTextures.OVERLAY_NO_MAINTENANCE_ISSUES;
                 if (count >= getIdealStatus()) return GTGuiTextures.OVERLAY_ALL_MAINTENANCE_ISSUES;

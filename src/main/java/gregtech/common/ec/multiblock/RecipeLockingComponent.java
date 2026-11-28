@@ -1,5 +1,10 @@
 package gregtech.common.ec.multiblock;
 
+import static gregtech.api.ec.IECMachine.ON_SCREWDRIVER_CLICK;
+import static gregtech.api.ec.IECMachine.WAILA_DATA_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_PROVIDER;
+import static gregtech.api.ec.IECMultiblock.GUI_SYNCABLE;
+import static gregtech.api.ec.component.IProcessingLogicRecipeComponent.PROCESSING_LOGIC_SETUP;
 import static gregtech.api.recipe.check.SingleRecipeCheck.getDisplayString;
 
 import net.minecraft.entity.player.EntityPlayer;
@@ -17,15 +22,13 @@ import org.jetbrains.annotations.Nullable;
 import com.cleanroommc.modularui.value.sync.BooleanSyncValue;
 import com.cleanroommc.modularui.value.sync.PanelSyncManager;
 
-import gregtech.api.ec.component.IGuiSyncableComponent;
-import gregtech.api.ec.component.IOnScrewdriverClickComponent;
+import gregtech.api.ec.IECMultiblock;
 import gregtech.api.ec.component.IRecipeLogicComponent;
 import gregtech.api.ec.component.ISavableComponent;
-import gregtech.api.ec.component.IWailaDataComponent;
-import gregtech.api.ec.component.gui.IGuiProviderComponent;
-import gregtech.api.ec.component.gui.MultiblockGuiBuilder;
-import gregtech.api.ec.component.multiblock.IProcessingLogicSetupComponent;
 import gregtech.api.ec.component.multiblock.IRecipeLockingComponent;
+import gregtech.api.ec.gui.MultiblockGuiBuilder;
+import gregtech.api.ec.signal.IGuiProvider;
+import gregtech.api.ec.signal.IOnToolClick;
 import gregtech.api.logic.ProcessingLogic;
 import gregtech.api.modularui2.GTGuiTextures;
 import gregtech.api.recipe.check.SingleRecipeCheck;
@@ -35,8 +38,7 @@ import gregtech.common.gui.modularui.multiblock.base.MTEMultiBlockECBaseGui;
 import gregtech.common.tileentities.machines.RecipeCheckReason;
 
 public class RecipeLockingComponent extends BaseMultiblockComponent
-    implements IRecipeLockingComponent, ISavableComponent, IProcessingLogicSetupComponent, IWailaDataComponent,
-    IOnScrewdriverClickComponent, IGuiProviderComponent, IGuiSyncableComponent {
+    implements IRecipeLockingComponent, ISavableComponent {
 
     private boolean mLockedToSingleRecipe = false;
     private @Nullable SingleRecipeCheck mSingleRecipeCheck = null;
@@ -115,12 +117,10 @@ public class RecipeLockingComponent extends BaseMultiblockComponent
         return SavePriority.RECIPE_LOCKING.priority;
     }
 
-    @Override
     public void setupProcessingLogic(ProcessingLogic logic) {
         logic.setRecipeLocking(getMachine(), isRecipeLockingEnabled());
     }
 
-    @Override
     public void appendWailaNBTData(EntityPlayerMP player, TileEntity tile, NBTTagCompound tag, World world, int x,
         int y, int z) {
         tag.setBoolean("isLockedToRecipe", isRecipeLockingEnabled());
@@ -130,9 +130,8 @@ public class RecipeLockingComponent extends BaseMultiblockComponent
             lockedRecipe != null ? getDisplayString(lockedRecipe.getRecipe(), false, true, false, true) : "");
     }
 
-    @Override
-    public boolean onScrewdriverRightClick(ForgeDirection side, EntityPlayer aPlayer, float aX, float aY, float aZ,
-        ItemStack aTool) {
+    public boolean onScrewdriverRightClick(ForgeDirection side, ForgeDirection wrenchingSide, EntityPlayer aPlayer,
+        float aX, float aY, float aZ, ItemStack aTool) {
         if (!allowScrewdriverToggle) return false;
         var state = isRecipeLockingEnabled();
         setRecipeLocking(!state);
@@ -146,22 +145,25 @@ public class RecipeLockingComponent extends BaseMultiblockComponent
     }
 
     @Override
-    public int getOnScrewdriverClickPriority() {
-        return OnScrewdriverClickPriority.RECIPE_LOCKING.priority;
+    protected void onAdd(@NotNull IECMultiblock multiblock) {
+        super.onAdd(multiblock);
+        connect(ON_SCREWDRIVER_CLICK, IOnToolClick.ScrewdriverPriority.RECIPE_LOCKING, this::onScrewdriverRightClick);
+        connect(PROCESSING_LOGIC_SETUP, this::setupProcessingLogic);
+        connect(WAILA_DATA_PROVIDER, this::appendWailaNBTData);
+        connect(GUI_PROVIDER, this::configureGui);
+        connect(GUI_SYNCABLE, this::registerGuiSyncValues);
     }
 
-    @Override
     public void registerGuiSyncValues(@NotNull PanelSyncManager syncManager) {
         BooleanSyncValue recipeLockSyncer = new BooleanSyncValue(this::isRecipeLockingEnabled, this::setRecipeLocking)
             .allowC2S();
         syncManager.syncValue("recipeLock", recipeLockSyncer);
     }
 
-    @Override
     public void configureGui(@NotNull MultiblockGuiBuilder builder) {
         builder.leftGap()
             .replace(
-                LeftGapSection.RECIPE_LOCK,
+                IGuiProvider.LeftGapSection.RECIPE_LOCK,
                 (panel, syncManager) -> MTEMultiBlockECBaseGui.createActiveFeatureToggleButton(
                     syncManager.findSyncHandler("recipeLock", BooleanSyncValue.class),
                     GTGuiTextures.OVERLAY_BUTTON_RECIPE_UNLOCKED,
